@@ -23,6 +23,8 @@ export interface TimelineItem {
 
 export interface TimelineEntry {
 	time: string;
+	timePending?: boolean;
+	nodeId?: string;
 	type?: string;
 	description: string;
 	chapter: string;
@@ -33,16 +35,119 @@ export interface TimelineEntry {
 	items?: TimelineItem[];
 }
 
+export interface PendingTimelineEvent {
+	id: string;
+	description: string;
+	chapter: string;
+	origin?: string;
+	important?: boolean;
+}
+
+export interface TimelineDocument {
+	entries: TimelineEntry[];
+	pendingEvents: PendingTimelineEvent[];
+}
+
+export interface TimelineInsertAnchor {
+	afterEntryIndex?: number;
+	expectedAfterEntry?: TimelineEntry;
+	beforeEntryIndex?: number;
+	expectedBeforeEntry?: TimelineEntry;
+	fallbackIndex?: number;
+}
+
 export interface ChapterTimelineNode {
 	time: string;
+	timePending?: boolean;
+	nodeId?: string;
 	type?: string;
 	lores?: string[];
 	items: TimelineItem[];
 	entry: TimelineEntry;
 }
 
-export function timelineNodeKey(node: Pick<TimelineEntry, 'time' | 'type' | 'lores'>): string {
+const PENDING_SECTION_START_MARKER = '<!-- wn-pending-events:start -->';
+const PENDING_SECTION_END_MARKER = '<!-- wn-pending-events:end -->';
+const PENDING_SECTION_MARKER_REGEX = /^<!--[ \t]*wn-pending-events:(start|end)[ \t]*-->[ \t]*\r?$/gm;
+const TIME_PENDING_COMMENT_REGEX = /<!--\s*wn-time-pending\s*-->/;
+const NODE_ID_COMMENT_REGEX = /<!--\s*wn-node:\s*([a-zA-Z0-9_-]+)\s*-->/;
+const PENDING_ID_COMMENT_REGEX = /<!--\s*wn-pending-id:\s*([a-zA-Z0-9_-]+)\s*-->/;
+
+interface TimelineSourceLine {
+	start: number;
+	end: number;
+}
+
+let timelineEntityIdCounter = 0;
+
+export function createTimelineEntityId(prefix: 'nd' | 'pe'): string {
+	timelineEntityIdCounter += 1;
+	const ts = Date.now().toString(36);
+	const seq = timelineEntityIdCounter.toString(36);
+	const rand = Math.random().toString(36).slice(2, 6);
+	return `${prefix}_${ts}_${seq}_${rand}`;
+}
+
+export function getTimelineNodeDisplayTime(node: Pick<TimelineEntry, 'time' | 'timePending'>): string {
+	return node.timePending ? t('timeline.time-pending') : node.time;
+}
+
+export function getTimelineEntryLocateCandidates(entry: Pick<TimelineEntry, 'time' | 'timePending' | 'nodeId'>): string[] {
+	const nodeMarker = entry.nodeId ? 'wn-node: ' + entry.nodeId : '';
+	if (entry.timePending) {
+		const displayLabel = getTimelineNodeDisplayTime(entry);
+		const fileLabel = getTimelineLabel('timePending');
+		return [
+			nodeMarker,
+			`## ${fileLabel}`,
+			`## ${displayLabel}`,
+			displayLabel
+		].filter(Boolean);
+	}
+	return [nodeMarker, `## ${entry.time}`, `# ${entry.time}`, entry.time].filter(Boolean);
+}
+
+function stableShortHash(input: string): string {
+	let hash = 2166136261;
+	for (let i = 0; i < input.length; i++) {
+		hash ^= input.charCodeAt(i);
+		hash = Math.imul(hash, 16777619);
+	}
+	return (hash >>> 0).toString(36);
+}
+
+function splitTimelineSections(content: string): {
+	mainContent: string;
+	pendingSectionContent: string;
+	pendingRawBlock: string;
+	pendingStart: number;
+	pendingEnd: number;
+} {
+	let startMarker: RegExpExecArray | undefined;
+	for (const marker of content.matchAll(PENDING_SECTION_MARKER_REGEX)) {
+		if (marker[1] === 'start') {
+			startMarker = marker;
+		} else if (startMarker) {
+			const pendingStart = startMarker.index;
+			const end = marker.index + marker[0].length;
+			const pendingEnd = end + (content[end] === '\n' ? 1 : 0);
+			return {
+				mainContent: content.slice(0, pendingStart) + content.slice(pendingEnd),
+				pendingSectionContent: content.slice(pendingStart + startMarker[0].length, marker.index),
+				pendingRawBlock: content.slice(pendingStart, pendingEnd),
+				pendingStart,
+				pendingEnd
+			};
+		}
+	}
+	return { mainContent: content, pendingSectionContent: '', pendingRawBlock: '', pendingStart: -1, pendingEnd: -1 };
+}
+
+export function timelineNodeKey(node: Pick<TimelineEntry, 'time' | 'timePending' | 'nodeId' | 'type' | 'lores'>): string {
 	const lores = [...new Set((node.lores || []).map(lore => lore.trim()).filter(Boolean))].sort();
+	if (node.timePending) {
+		return JSON.stringify(['__wn_time_pending__', node.nodeId?.trim() || '', node.type?.trim() || '', lores]);
+	}
 	return JSON.stringify([node.time.trim(), node.type?.trim() || '', lores]);
 }
 
@@ -154,9 +259,21 @@ function deepCloneItem(item: TimelineItem): TimelineItem {
 	};
 }
 
+export function deepClonePendingEvent(event: PendingTimelineEvent): PendingTimelineEvent {
+	return {
+		id: event.id,
+		description: event.description,
+		chapter: event.chapter,
+		origin: event.origin,
+		important: event.important
+	};
+}
+
 export function deepCloneEntry(entry: TimelineEntry): TimelineEntry {
 	return {
 		time: entry.time,
+		timePending: entry.timePending ? true : undefined,
+		nodeId: entry.nodeId,
 		type: entry.type,
 		description: entry.description,
 		chapter: entry.chapter,
@@ -168,7 +285,7 @@ export function deepCloneEntry(entry: TimelineEntry): TimelineEntry {
 	};
 }
 
-function deepFreezeEntry<T extends TimelineEntry | TimelineItem>(obj: T): Readonly<T> {
+function deepFreezeEntry<T extends TimelineEntry | TimelineItem | PendingTimelineEvent>(obj: T): Readonly<T> {
 	if (!obj || typeof obj !== 'object') return obj;
 	Object.freeze(obj);
 	if ('items' in obj && Array.isArray(obj.items)) {
@@ -181,6 +298,42 @@ function deepFreezeEntry<T extends TimelineEntry | TimelineItem>(obj: T): Readon
 		Object.freeze(obj.lores);
 	}
 	return obj;
+}
+
+function isTimelineItemNonEmpty(item: Pick<TimelineItem, 'description' | 'chapter' | 'origin' | 'important'>): boolean {
+	return Boolean(item.description?.trim() || item.chapter?.trim() || item.origin?.trim() || item.important);
+}
+
+function formatBulletItemLines(
+	item: Pick<TimelineItem, 'description' | 'chapter' | 'origin' | 'important'>,
+	pendingId?: string
+): string[] {
+	const result: string[] = [];
+	const descriptions = item.description ? item.description.split('\n').filter(line => line.trim()) : [];
+	const chapters = item.chapter ? parseTimelineChapterList(item.chapter) : [];
+	const chapterLinks = chapters.map(c => `[[${c}]]`).join(' ');
+	const idComment = pendingId ? `<!-- wn-pending-id: ${pendingId} -->` : '';
+
+	if (descriptions.length > 0) {
+		const firstLineParts: string[] = [descriptions[0]];
+		if (chapterLinks) firstLineParts.push(chapterLinks);
+		if (item.important) firstLineParts.push('<!-- wn-important -->');
+		if (item.origin) firstLineParts.push(`<!-- origin: ${item.origin.replace(/\n/g, ' ')} -->`);
+		if (idComment) firstLineParts.push(idComment);
+		result.push(`- ${firstLineParts.join(' ')}`);
+
+		for (let i = 1; i < descriptions.length; i++) {
+			result.push(`  ${descriptions[i]}`);
+		}
+	} else if (chapterLinks || item.origin || item.important || idComment) {
+		const parts: string[] = [];
+		if (chapterLinks) parts.push(chapterLinks);
+		if (item.important) parts.push('<!-- wn-important -->');
+		if (item.origin) parts.push(`<!-- origin: ${item.origin.replace(/\n/g, ' ')} -->`);
+		if (idComment) parts.push(idComment);
+		if (parts.length > 0) result.push(`- ${parts.join(' ')}`);
+	}
+	return result;
 }
 
 /**
@@ -348,6 +501,114 @@ export class TimelineManager {
 		return this.parseEntries(content, folder);
 	}
 
+	async loadDocument(folderPath?: string): Promise<TimelineDocument | null> {
+		const folder = this.normalizeFolderPath(folderPath);
+		const content = await this.loadContent(folder);
+		if (content === null) return null;
+		if (!content || typeof content !== 'string') return { entries: [], pendingEvents: [] };
+		return this.parseDocument(content, folder);
+	}
+
+	parseDocument(content: string, folderPath?: string): TimelineDocument {
+		return {
+			entries: this.parseEntries(content, folderPath),
+			pendingEvents: this.parsePendingEvents(content)
+		};
+	}
+
+	parsePendingEvents(content: string): PendingTimelineEvent[] {
+		if (!content || typeof content !== 'string') return [];
+		const { pendingSectionContent } = splitTimelineSections(content);
+		if (!pendingSectionContent.trim()) return [];
+
+		const lines = pendingSectionContent.split(/\r?\n/);
+		const events: PendingTimelineEvent[] = [];
+		const seenIds = new Set<string>();
+		let i = 0;
+
+		while (i < lines.length) {
+			const line = lines[i];
+			const trimmedLine = line.trim();
+			if (!trimmedLine || trimmedLine.startsWith('#')) {
+				i++;
+				continue;
+			}
+			if (line.startsWith('- ')) {
+				let desc = line.slice(2);
+				i++;
+				while (i < lines.length && lines[i].startsWith('  ') && !lines[i].startsWith('- ')) {
+					const continuationLine = lines[i].slice(2);
+					if (continuationLine.trim()) {
+						desc += '\n' + continuationLine;
+					}
+					i++;
+				}
+
+				let pendingId: string | undefined;
+				const idMatch = desc.match(PENDING_ID_COMMENT_REGEX);
+				if (idMatch) {
+					pendingId = idMatch[1];
+					desc = desc.replace(new RegExp(PENDING_ID_COMMENT_REGEX.source, 'g'), '').trim();
+				}
+
+				let important = false;
+				if (/<!--\s*wn-important\s*-->/.test(desc)) {
+					important = true;
+					desc = desc.replace(/<!--\s*wn-important\s*-->/g, '').trim();
+				}
+
+				// Strip any stray lore comments if manually edited
+				desc = desc.replace(/<!--\s*(?:wn-lore|lore):\s*[\s\S]+?\s*-->/g, '').trim();
+
+				let origin: string | undefined;
+				const originMatch = desc.match(/<!--\s*origin:\s*([\s\S]+?)\s*-->/);
+				if (originMatch) {
+					origin = originMatch[1];
+					desc = desc.replace(/<!--\s*origin:\s*[\s\S]+?\s*-->/g, '').trim();
+				}
+
+				const chapterMatches = desc.matchAll(/\[\[(.+?)\]\]/g);
+				const chapters: string[] = [];
+				for (const match of chapterMatches) {
+					chapters.push(match[1]);
+				}
+
+				desc = desc
+					.replace(/\[\[.+?\]\]/g, '')
+					.split('\n')
+					.map(text => text.trimEnd())
+					.join('\n')
+					.trim();
+
+				const chapter = serializeTimelineChapterList(chapters);
+				if (!pendingId && !desc && !chapter && !origin && !important) {
+					continue;
+				}
+
+				let resolvedId = pendingId;
+				if (!resolvedId || seenIds.has(resolvedId)) {
+					resolvedId = `pe_auto_${events.length}_${stableShortHash(`${desc}|${chapter}|${origin || ''}|${important ? '1' : '0'}`)}`;
+					while (seenIds.has(resolvedId)) {
+						resolvedId += '_x';
+					}
+				}
+				seenIds.add(resolvedId);
+
+				events.push({
+					id: resolvedId,
+					description: desc,
+					chapter,
+					origin,
+					important: important ? true : undefined
+				});
+				continue;
+			}
+			i++;
+		}
+
+		return events.map(deepClonePendingEvent);
+	}
+
 	async loadContent(folderPath?: string): Promise<string | null> {
 		if (this.destroyed) return null;
 		const folder = this.normalizeFolderPath(folderPath);
@@ -420,18 +681,56 @@ export class TimelineManager {
 		return entries.map(deepCloneEntry);
 	}
 
-	private parseTimelineContent(content: string, folderPath: string): TimelineEntry[] {
+	private parseTimelineContent(
+		content: string,
+		folderPath: string,
+		sourceSpans?: Map<TimelineItem, TimelineSourceLine[]>
+	): TimelineEntry[] {
 		if (!content || typeof content !== 'string') return [];
+		const { mainContent, pendingStart, pendingEnd } = splitTimelineSections(content);
+		if (!mainContent.trim()) return [];
+		const pendingDelta = pendingStart >= 0 ? pendingEnd - pendingStart : 0;
+		const toOrigLineSpan = (start: number, end: number): TimelineSourceLine => {
+			if (pendingStart >= 0 && start >= pendingStart) {
+				return { start: start + pendingDelta, end: end + pendingDelta };
+			}
+			return { start, end };
+		};
 		const bookFolder = folderPath;
 		const entries: TimelineEntry[] = [];
-		const blocks = content.split(/\n---\n/);
+		const blocks = mainContent.split(/\n---\n/);
+		const seenNodeIds = new Set<string>();
+		let blockOffset = 0;
 
-		for (const block of blocks) {
+		for (let blockIdx = 0; blockIdx < blocks.length; blockIdx++) {
+			const block = blocks[blockIdx];
+			const currentBlockOffset = blockOffset;
+			blockOffset += block.length + 5; // '\n---\n'.length
 			const trimmed = block.trim();
 			if (!trimmed.startsWith('## ')) continue;
 
 			const lines = trimmed.split('\n');
-			const time = lines[0].replace(/^## /, '').trim();
+			const lineSpans: TimelineSourceLine[] = [];
+			if (sourceSpans) {
+				let cursor = currentBlockOffset + block.length - block.trimStart().length;
+				for (const line of lines) {
+					lineSpans.push(toOrigLineSpan(cursor, cursor + line.length - (line.endsWith('\r') ? 1 : 0)));
+					cursor += line.length + 1;
+				}
+			}
+			let headingRaw = lines[0].replace(/^## /, '');
+			let timePending = false;
+			let nodeId: string | undefined;
+
+			if (TIME_PENDING_COMMENT_REGEX.test(headingRaw)) {
+				timePending = true;
+				headingRaw = headingRaw.replace(new RegExp(TIME_PENDING_COMMENT_REGEX.source, 'g'), '');
+			}
+			const headingNodeMatch = headingRaw.match(NODE_ID_COMMENT_REGEX);
+			if (headingNodeMatch) {
+				nodeId = headingNodeMatch[1];
+				headingRaw = headingRaw.replace(new RegExp(NODE_ID_COMMENT_REGEX.source, 'g'), '');
+			}
 
 			const items: TimelineItem[] = [];
 			const nodeLores: string[] = [];
@@ -451,6 +750,19 @@ export class TimelineManager {
 
 				// 跳过空行
 				if (!trimmedLine) {
+					i++;
+					continue;
+				}
+
+				// 检查独立的时间待定或节点标识注释
+				if (/^<!--\s*wn-time-pending\s*-->$/.test(trimmedLine)) {
+					timePending = true;
+					i++;
+					continue;
+				}
+				const blockNodeMatch = trimmedLine.match(/^<!--\s*wn-node:\s*([a-zA-Z0-9_-]+)\s*-->$/);
+				if (blockNodeMatch) {
+					if (!nodeId) nodeId = blockNodeMatch[1];
 					i++;
 					continue;
 				}
@@ -496,6 +808,7 @@ export class TimelineManager {
 
 				// 处理列表项
 				if (line.startsWith('- ')) {
+					const itemStartLine = i;
 					lastItemLineIndex = i;
 					let desc = line.slice(2);
 
@@ -550,13 +863,15 @@ export class TimelineManager {
 
 					const chapter = serializeTimelineChapterList(chapters);
 
-					items.push({
+					const item: TimelineItem = {
 						description: desc,
 						chapter,
 						origin,
 						important,
 						type: firstTypeLineIndex >= 0 ? currentType : undefined
-					});
+					};
+					items.push(item);
+					sourceSpans?.set(item, lineSpans.slice(itemStartLine, i));
 					continue;
 				}
 
@@ -580,16 +895,25 @@ export class TimelineManager {
 			// 如果没有找到列表项，尝试从旧格式解析（H2 后的描述行）
 			if (items.length === 0) {
 				const descLines: string[] = [];
+				const descLineIndices: number[] = [];
 				let j = 1;
 				while (j < lines.length && !lines[j].startsWith('**') && !lines[j].startsWith('- ')) {
 					const l = lines[j].trim();
 					if (l) {
-						const blockLoreMatch = l.match(/^<!--\s*(?:wn-lore|lore):\s*([\s\S]+?)\s*-->$/);
-						if (blockLoreMatch) {
-							const rawLores = parseLoreComment(blockLoreMatch[1]);
-							nodeLores.push(...this.canonicalizeLoreList(rawLores, bookFolder));
+						if (/^<!--\s*wn-time-pending\s*-->$/.test(l)) {
+							timePending = true;
+						} else if (/^<!--\s*wn-node:\s*([a-zA-Z0-9_-]+)\s*-->$/.test(l)) {
+							const match = l.match(/^<!--\s*wn-node:\s*([a-zA-Z0-9_-]+)\s*-->$/);
+							if (match && !nodeId) nodeId = match[1];
 						} else {
-							descLines.push(l);
+							const blockLoreMatch = l.match(/^<!--\s*(?:wn-lore|lore):\s*([\s\S]+?)\s*-->$/);
+							if (blockLoreMatch) {
+								const rawLores = parseLoreComment(blockLoreMatch[1]);
+								nodeLores.push(...this.canonicalizeLoreList(rawLores, bookFolder));
+							} else {
+								descLines.push(l);
+								descLineIndices.push(j);
+							}
 						}
 					}
 					j++;
@@ -625,31 +949,70 @@ export class TimelineManager {
 						description = description.replace(/\[\[.+?\]\]/g, '').trim();
 					}
 
-					items.push({
+					const item: TimelineItem = {
 						description,
 						chapter: serializeTimelineChapterList(chapters),
 						origin,
 						important,
 						type: primaryType || undefined
-					});
+					};
+					items.push(item);
+					sourceSpans?.set(item, descLineIndices.map(lineIdx => lineSpans[lineIdx]));
 				}
 			}
 
-			const finalItems = items.length > 0 ? items : [{ description: '', chapter: '', type: primaryType || undefined }];
+			const time = timePending ? '' : headingRaw.trim();
+			let resolvedNodeId = nodeId;
+			if (timePending || resolvedNodeId) {
+				if (!resolvedNodeId || seenNodeIds.has(resolvedNodeId)) {
+					resolvedNodeId = `nd_auto_${blockIdx}_${stableShortHash(trimmed)}`;
+					while (seenNodeIds.has(resolvedNodeId)) {
+						resolvedNodeId += '_x';
+					}
+				}
+				seenNodeIds.add(resolvedNodeId);
+			}
+
 			const uniqueLores = [...new Set(nodeLores)];
+			if (items.length === 0) {
+				entries.push({
+					time,
+					timePending: timePending ? true : undefined,
+					nodeId: resolvedNodeId,
+					type: primaryType,
+					description: '',
+					chapter: '',
+					rawBlock: trimmed,
+					items: [],
+					lores: uniqueLores.length > 0 ? uniqueLores : undefined
+				});
+				continue;
+			}
+
 			// Older event-level files may contain several type sections in one block.
 			// Expose each section as its own node; subsequent writes use the node format.
 			const groups = new Map<string, TimelineItem[]>();
-			for (const item of finalItems) {
+			for (const item of items) {
 				const type = item.type || '';
 				const { type: _legacyType, ...nodeItem } = item;
 				const group = groups.get(type) || [];
 				group.push(nodeItem);
 				groups.set(type, group);
+				if (sourceSpans) {
+					const spans = sourceSpans.get(item);
+					if (spans) sourceSpans.set(nodeItem, spans);
+					sourceSpans.delete(item);
+				}
 			}
+			let groupIdx = 0;
 			for (const [type, groupItems] of groups) {
+				const groupNodeId = resolvedNodeId
+					? (groupIdx === 0 ? resolvedNodeId : `${resolvedNodeId}_g${groupIdx}`)
+					: undefined;
 				entries.push({
 					time,
+					timePending: timePending ? true : undefined,
+					nodeId: groupNodeId,
 					type,
 					description: groupItems.map(it => it.description).filter(Boolean).join('\n'),
 					chapter: aggregateTimelineChapterLists(groupItems.map(it => it.chapter)),
@@ -657,6 +1020,7 @@ export class TimelineManager {
 					items: groupItems,
 					lores: uniqueLores.length > 0 ? uniqueLores : undefined
 				});
+				groupIdx++;
 			}
 		}
 
@@ -665,51 +1029,29 @@ export class TimelineManager {
 
 	formatEntry(entry: TimelineEntry): string {
 		const lines: string[] = [];
-		lines.push(`## ${entry.time}`);
+		const heading = entry.timePending ? getTimelineLabel('timePending') + ' <!-- wn-time-pending -->' : entry.time;
+		const nodeId = entry.nodeId?.trim() || (entry.timePending ? createTimelineEntityId('nd') : '');
+		const nodeMarker = nodeId ? ` <!-- wn-node: ${nodeId} -->` : '';
+		lines.push(`## ${heading}${nodeMarker}`);
 		lines.push('');
 		if (entry.type) {
 			lines.push(`**${getTimelineLabel('type')}**：${entry.type}`);
 			lines.push('');
 		}
 
-		const items = entry.items && entry.items.length > 0
+		const items = entry.items !== undefined
 			? entry.items
-			: [{
-				description: entry.description,
-				chapter: entry.chapter,
-				origin: entry.origin,
-				important: entry.important
-			}];
+			: (isTimelineItemNonEmpty(entry)
+				? [{
+					description: entry.description,
+					chapter: entry.chapter,
+					origin: entry.origin,
+					important: entry.important
+				}]
+				: []);
 
 		for (const it of items) {
-			const descriptions = it.description ? it.description.split('\n').filter(line => line.trim()) : [];
-			if (descriptions.length > 0) {
-				const firstLineParts: string[] = [descriptions[0]];
-				if (it.chapter) {
-					const chapters = parseTimelineChapterList(it.chapter);
-					const chapterLinks = chapters.map(c => `[[${c}]]`).join(' ');
-					if (chapterLinks) firstLineParts.push(chapterLinks);
-				}
-				if (it.important) {
-					firstLineParts.push('<!-- wn-important -->');
-				}
-				if (it.origin) {
-					firstLineParts.push(`<!-- origin: ${it.origin.replace(/\n/g, ' ')} -->`);
-				}
-				lines.push(`- ${firstLineParts.join(' ')}`);
-
-				for (let i = 1; i < descriptions.length; i++) {
-					lines.push(`  ${descriptions[i]}`);
-				}
-			} else if (it.chapter || it.origin || it.important) {
-				const chapters = it.chapter ? parseTimelineChapterList(it.chapter) : [];
-				const chapterLinks = chapters.map(c => `[[${c}]]`).join(' ');
-				const parts: string[] = [];
-				if (chapterLinks) parts.push(chapterLinks);
-				if (it.important) parts.push('<!-- wn-important -->');
-				if (it.origin) parts.push(`<!-- origin: ${it.origin.replace(/\n/g, ' ')} -->`);
-				if (parts.length > 0) lines.push(`- ${parts.join(' ')}`);
-			}
+			lines.push(...formatBulletItemLines(it));
 		}
 
 		if (entry.lores && entry.lores.length > 0) {
@@ -728,14 +1070,60 @@ export class TimelineManager {
 		return lines.join('\n');
 	}
 
+	formatPendingSection(pendingEvents: readonly PendingTimelineEvent[]): string {
+		if (!pendingEvents || pendingEvents.length === 0) return '';
+		const lines: string[] = [
+			PENDING_SECTION_START_MARKER,
+			`## ${getTimelineLabel('pendingSection')}`,
+			''
+		];
+		for (const event of pendingEvents) {
+			const resolvedId = event.id?.trim() || createTimelineEntityId('pe');
+			lines.push(...formatBulletItemLines(event, resolvedId));
+		}
+		lines.push(PENDING_SECTION_END_MARKER);
+		lines.push('');
+		return lines.join('\n');
+	}
+
+	private replacePendingSection(content: string, pendingEvents: readonly PendingTimelineEvent[]): string {
+		const { pendingStart, pendingEnd } = splitTimelineSections(content);
+		const section = this.formatPendingSection(pendingEvents);
+		if (pendingStart >= 0) {
+			return content.slice(0, pendingStart) + section + content.slice(pendingEnd);
+		}
+		const separator = section && content && !content.endsWith('\n') ? '\n' : '';
+		return content + separator + section;
+	}
+
+	private serializeDocument(entries: readonly TimelineEntry[], pendingEvents: readonly PendingTimelineEvent[]): string {
+		let content = '';
+		for (const entry of entries) {
+			content += this.formatEntry(entry);
+		}
+		const pendingSection = this.formatPendingSection(pendingEvents);
+		if (pendingSection) {
+			if (content && !content.endsWith('\n')) content += '\n';
+			content += pendingSection;
+		}
+		return content;
+	}
+
 	findEntryHeadingOffset(content: string, entryIndex: number, folderPath?: string): number | undefined {
-		const headings = [...content.matchAll(/^## .+$/gm)];
+		const { pendingStart, pendingEnd } = splitTimelineSections(content);
+		const headings = [...content.matchAll(/^## .+$/gm)].filter(h => {
+			if (pendingStart < 0) return true;
+			return h.index < pendingStart || h.index >= pendingEnd;
+		});
 		let index = 0;
 		for (let i = 0; i < headings.length; i++) {
 			const start = headings[i].index;
-			const nextHeading = headings[i + 1]?.index ?? content.length;
+			let limit = headings[i + 1]?.index ?? content.length;
+			if (pendingStart >= 0 && start < pendingStart && pendingStart < limit) {
+				limit = pendingStart;
+			}
 			const separator = content.indexOf('\n---\n', start);
-			const end = separator >= 0 && separator < nextHeading ? separator + '\n---\n'.length : nextHeading;
+			const end = separator >= 0 && separator < limit ? separator + '\n---\n'.length : limit;
 			const count = this.parseEntries(content.slice(start, end), folderPath).length;
 			if (entryIndex < index + count) return start;
 			index += count;
@@ -760,6 +1148,7 @@ export class TimelineManager {
 		const chapterPathToNodes = new Map<string, string[]>();
 
 		for (const entry of entries) {
+			if (entry.timePending) continue;
 			const nodeTime = entry.time?.trim();
 			if (!nodeTime) continue;
 
@@ -812,8 +1201,8 @@ export class TimelineManager {
 		const results: ChapterTimelineNode[] = [];
 
 		for (const entry of entries) {
-			const nodeTime = entry.time?.trim();
-			if (!nodeTime) continue;
+			const nodeTime = entry.time?.trim() || '';
+			if (!entry.timePending && !nodeTime) continue;
 
 			const matchedItems: TimelineItem[] = [];
 
@@ -844,7 +1233,9 @@ export class TimelineManager {
 
 			if (matchedItems.length > 0) {
 				results.push({
-					time: entry.time,
+					time: entry.timePending ? '' : entry.time,
+					timePending: entry.timePending ? true : undefined,
+					nodeId: entry.nodeId,
 					type: entry.type,
 					lores: entry.lores,
 					items: matchedItems,
@@ -917,7 +1308,14 @@ export class TimelineManager {
 
 	async appendEntry(entry: TimelineEntry, folderPath?: string): Promise<string> {
 		const folder = this.normalizeFolderPath(folderPath);
-		const canonicalEntry = { ...entry, lores: this.canonicalizeLoreList(entry.lores || [], folder) };
+		const isTimePending = Boolean(entry.timePending);
+		const canonicalEntry: TimelineEntry = {
+			...entry,
+			time: isTimePending ? '' : (entry.time || '').trim(),
+			timePending: isTimePending ? true : undefined,
+			nodeId: entry.nodeId?.trim() || (isTimePending ? createTimelineEntityId('nd') : undefined),
+			lores: this.canonicalizeLoreList(entry.lores || [], folder)
+		};
 		const frozenCanonicalEntry = deepFreezeEntry(deepCloneEntry(canonicalEntry));
 
 		return this.writer.enqueue(async () => {
@@ -926,32 +1324,49 @@ export class TimelineManager {
 
 			let finalContent = '';
 			await this.processTimelineFile(file, (existing) => {
-				const headings = [...existing.matchAll(/^## (.+)$/gm)];
-				let lastSameTimeEnd = -1;
-				for (let i = 0; i < headings.length; i++) {
-					const heading = headings[i];
-					if (heading[1].trim() !== frozenCanonicalEntry.time) continue;
-					const start = heading.index;
-					const nextHeading = headings[i + 1]?.index ?? existing.length;
-					const separator = existing.indexOf('\n---\n', start);
-					const end = separator >= 0 && separator < nextHeading ? separator + '\n---\n'.length : nextHeading;
-					lastSameTimeEnd = end;
-					const matchingEntries = this.parseEntries(existing.slice(start, end), folder);
-					const match = matchingEntries.find(candidate => timelineNodeKey(candidate) === timelineNodeKey(frozenCanonicalEntry));
-					if (!match) continue;
+				const { mainContent, pendingRawBlock } = splitTimelineSections(existing);
+				const appendPending = (body: string): string => {
+					if (!pendingRawBlock) return body;
+					const sep = body && !body.endsWith('\n') ? '\n' : '';
+					return body + sep + pendingRawBlock;
+				};
 
-					const existingItems = (match.items || []).filter(it => it.description || it.chapter || it.origin || it.important);
-					const incomingItems = frozenCanonicalEntry.items?.length
-						? frozenCanonicalEntry.items.map(deepCloneItem)
-						: [{ description: frozenCanonicalEntry.description, chapter: frozenCanonicalEntry.chapter, origin: frozenCanonicalEntry.origin, important: frozenCanonicalEntry.important }];
-					match.items = [...existingItems, ...incomingItems];
-					finalContent = existing.slice(0, start) + matchingEntries.map(candidate => this.formatEntry(candidate)).join('') + existing.slice(end);
+				if (!frozenCanonicalEntry.timePending) {
+					const headings = [...mainContent.matchAll(/^## (.+)$/gm)];
+					let lastSameTimeEnd = -1;
+					for (let i = 0; i < headings.length; i++) {
+						const heading = headings[i];
+						if (TIME_PENDING_COMMENT_REGEX.test(heading[1])) continue;
+						if (heading[1].replace(NODE_ID_COMMENT_REGEX, '').trim() !== frozenCanonicalEntry.time) continue;
+						const start = heading.index;
+						const nextHeading = headings[i + 1]?.index ?? mainContent.length;
+						const separator = mainContent.indexOf('\n---\n', start);
+						const end = separator >= 0 && separator < nextHeading ? separator + '\n---\n'.length : nextHeading;
+						lastSameTimeEnd = end;
+						const matchingEntries = this.parseEntries(mainContent.slice(start, end), folder);
+						const match = matchingEntries.find(candidate => !candidate.timePending && timelineNodeKey(candidate) === timelineNodeKey(frozenCanonicalEntry));
+						if (!match) continue;
+
+						const existingItems = (match.items || []).filter(isTimelineItemNonEmpty);
+						const incomingItems = frozenCanonicalEntry.items !== undefined
+							? frozenCanonicalEntry.items.map(deepCloneItem)
+							: (isTimelineItemNonEmpty(frozenCanonicalEntry)
+								? [{ description: frozenCanonicalEntry.description, chapter: frozenCanonicalEntry.chapter, origin: frozenCanonicalEntry.origin, important: frozenCanonicalEntry.important }]
+								: []);
+						match.items = [...existingItems, ...incomingItems];
+						finalContent = appendPending(mainContent.slice(0, start) + matchingEntries.map(candidate => this.formatEntry(candidate)).join('') + mainContent.slice(end));
+						return finalContent;
+					}
+					const insertion = lastSameTimeEnd >= 0 ? lastSameTimeEnd : mainContent.length;
+					const prefix = mainContent.slice(0, insertion);
+					const separator = prefix && !prefix.endsWith('\n') ? '\n' : '';
+					finalContent = appendPending(prefix + separator + this.formatEntry(deepCloneEntry(frozenCanonicalEntry)) + mainContent.slice(insertion));
 					return finalContent;
 				}
-				const insertion = lastSameTimeEnd >= 0 ? lastSameTimeEnd : existing.length;
-				const prefix = existing.slice(0, insertion);
+
+				const prefix = mainContent;
 				const separator = prefix && !prefix.endsWith('\n') ? '\n' : '';
-				finalContent = prefix + separator + this.formatEntry(deepCloneEntry(frozenCanonicalEntry)) + existing.slice(insertion);
+				finalContent = appendPending(prefix + separator + this.formatEntry(deepCloneEntry(frozenCanonicalEntry)));
 				return finalContent;
 			});
 			const entries = this.parseEntries(finalContent, folder);
@@ -965,23 +1380,33 @@ export class TimelineManager {
 			? [...new Set(entry.lores.map(l => l.trim()).filter(Boolean))].sort()
 			: undefined;
 
-		const items = entry.items && entry.items.length > 0
-			? entry.items.map(it => ({
-				description: (it.description || '').trim(),
-				chapter: serializeTimelineChapterList(parseTimelineChapterList(it.chapter)),
-				origin: it.origin?.trim() || undefined,
-				important: !!it.important,
-				type: it.type?.trim() || undefined
-			}))
-			: [{
+		let items: TimelineItem[];
+		if (entry.items !== undefined) {
+			items = entry.items
+				.map(it => ({
+					description: (it.description || '').trim(),
+					chapter: serializeTimelineChapterList(parseTimelineChapterList(it.chapter)),
+					origin: it.origin?.trim() || undefined,
+					important: !!it.important,
+					type: it.type?.trim() || undefined
+				}))
+				.filter(isTimelineItemNonEmpty);
+		} else if (isTimelineItemNonEmpty(entry)) {
+			items = [{
 				description: (entry.description || '').trim(),
 				chapter: serializeTimelineChapterList(parseTimelineChapterList(entry.chapter)),
 				origin: entry.origin?.trim() || undefined,
 				important: !!entry.important
 			}];
+		} else {
+			items = [];
+		}
 
+		const isTimePending = Boolean(entry.timePending);
 		return {
-			time: (entry.time || '').trim(),
+			time: isTimePending ? '' : (entry.time || '').trim(),
+			timePending: isTimePending ? true : undefined,
+			nodeId: entry.nodeId?.trim() || undefined,
 			type: (entry.type || '').trim() || undefined,
 			description: (entry.description || '').trim(),
 			chapter: serializeTimelineChapterList(parseTimelineChapterList(entry.chapter)),
@@ -993,9 +1418,142 @@ export class TimelineManager {
 		};
 	}
 
+	private matchesPendingEvent(candidate: PendingTimelineEvent, expected: PendingTimelineEvent): boolean {
+		return candidate.id === expected.id &&
+			(candidate.description || '').trim() === (expected.description || '').trim() &&
+			serializeTimelineChapterList(parseTimelineChapterList(candidate.chapter)) === serializeTimelineChapterList(parseTimelineChapterList(expected.chapter)) &&
+			(candidate.origin?.trim() || undefined) === (expected.origin?.trim() || undefined) &&
+			Boolean(candidate.important) === Boolean(expected.important);
+	}
+
+	private resolvePendingIndex(
+		pendingEvents: PendingTimelineEvent[],
+		pendingId: string,
+		expectedEvent?: PendingTimelineEvent
+	): number {
+		const idx = pendingEvents.findIndex(ev => ev.id === pendingId);
+		if (idx === -1) return -1;
+		if (expectedEvent && !this.matchesPendingEvent(pendingEvents[idx], expectedEvent)) {
+			return -1;
+		}
+		return idx;
+	}
+
 	private matchesEntry(candidate: TimelineEntry, expected: TimelineEntry): boolean {
 		return this.formatEntry(this.normalizeForSnapshot(candidate)).trim() ===
 			this.formatEntry(this.normalizeForSnapshot(expected)).trim();
+	}
+
+	private entryIdentityIgnoringImportance(entry: TimelineEntry): string {
+		const normalized = this.normalizeForSnapshot(entry);
+		const rawItems = entry.items !== undefined
+			? entry.items
+			: (isTimelineItemNonEmpty(entry)
+				? [{ description: entry.description, chapter: entry.chapter, origin: entry.origin, important: entry.important }]
+				: []);
+		const items = rawItems.map(it => ({
+			description: (it.description || '').trim(),
+			chapter: serializeTimelineChapterList(parseTimelineChapterList(it.chapter)),
+			origin: it.origin?.trim() || ''
+		}));
+		const stableNodeId = normalized.nodeId?.startsWith('nd_auto_')
+			? ''
+			: (normalized.nodeId ?? '');
+		return JSON.stringify([
+			normalized.time,
+			Boolean(normalized.timePending),
+			stableNodeId,
+			normalized.type ?? '',
+			normalized.lores ?? [],
+			items
+		]);
+	}
+
+	private patchTimelineItemImportance(
+		content: string,
+		lineSpans: readonly TimelineSourceLine[],
+		important: boolean
+	): string {
+		if (lineSpans.length === 0) return content;
+		const markerRegex = /<!--\s*wn-important\s*-->/;
+		const hasMarker = lineSpans.some(span => markerRegex.test(content.slice(span.start, span.end)));
+		if (important) {
+			if (hasMarker) return content;
+			const first = lineSpans[0];
+			const lineText = content.slice(first.start, first.end);
+			const originMatch = lineText.match(/<!--\s*origin:/);
+			let patchedLine: string;
+			if (originMatch && originMatch.index !== undefined) {
+				const beforeOrigin = lineText.slice(0, originMatch.index);
+				const prefixSpace = beforeOrigin.length > 0 && !/[ \t]$/.test(beforeOrigin) ? ' ' : '';
+				patchedLine = `${beforeOrigin}${prefixSpace}<!-- wn-important --> ${lineText.slice(originMatch.index)}`;
+			} else {
+				const prefixSpace = lineText.length > 0 && !/[ \t]$/.test(lineText) ? ' ' : '';
+				patchedLine = `${lineText}${prefixSpace}<!-- wn-important -->`;
+			}
+			return content.slice(0, first.start) + patchedLine + content.slice(first.end);
+		}
+		if (!hasMarker) return content;
+		let result = content;
+		for (let idx = lineSpans.length - 1; idx >= 0; idx--) {
+			const span = lineSpans[idx];
+			const lineText = result.slice(span.start, span.end);
+			if (!markerRegex.test(lineText)) continue;
+			let nextLine = lineText.replace(/([ \t]?)<!--\s*wn-important\s*-->([ \t]?)/g, (_m, before: string, after: string) =>
+				after ? before : ''
+			);
+			if (idx > 0 && nextLine.trim() === '') {
+				let removeStart = span.start;
+				if (removeStart >= 2 && result[removeStart - 2] === '\r' && result[removeStart - 1] === '\n') {
+					removeStart -= 2;
+				} else if (removeStart >= 1 && result[removeStart - 1] === '\n') {
+					removeStart -= 1;
+				}
+				result = result.slice(0, removeStart) + result.slice(span.end);
+			} else {
+				if (lineText.startsWith('- ') && !nextLine.startsWith('- ')) {
+					nextLine = `- ${nextLine.trimStart()}`;
+				}
+				result = result.slice(0, span.start) + nextLine + result.slice(span.end);
+			}
+		}
+		return result;
+	}
+
+	async setItemImportance(
+		itemIndex: number,
+		important: boolean,
+		folderPath: string,
+		expectedEntry: TimelineEntry,
+		source: { file: TFile; path: string }
+	): Promise<void> {
+		const folder = this.normalizeFolderPath(folderPath);
+		const { file, path } = source;
+		const conflict = (): never => {
+			const message = t('timeline.conflict-notice');
+			showPluginNotice(message);
+			throw new Error(message);
+		};
+		const assertSource = (): void => {
+			if (file.path !== path || this.getTimelineFile(folder) !== file) conflict();
+		};
+		const expectedIdentity = this.entryIdentityIgnoringImportance(expectedEntry);
+
+		return this.writer.enqueue(async () => {
+			assertSource();
+			await this.processTimelineFile(file, (existing) => {
+				assertSource();
+				const sourceSpans = new Map<TimelineItem, TimelineSourceLine[]>();
+				const latestEntries = this.parseTimelineContent(existing, folder, sourceSpans);
+				const matches = latestEntries.filter(entry => this.entryIdentityIgnoringImportance(entry) === expectedIdentity);
+				const item = matches.length === 1 ? matches[0].items?.[itemIndex] : undefined;
+				if (!item) return conflict();
+				if (Boolean(item.important) === important) return existing;
+				const spans = sourceSpans.get(item);
+				const updated = spans?.length ? this.patchTimelineItemImportance(existing, spans, important) : existing;
+				return updated === existing ? conflict() : updated;
+			});
+		});
 	}
 
 	private resolveTargetIndex(
@@ -1052,6 +1610,7 @@ export class TimelineManager {
 			await this.processTimelineFile(file, (existing) => {
 				assertSource();
 				const latestEntries = this.parseEntries(existing, folder);
+				const pendingEvents = this.parsePendingEvents(existing);
 				const targetIndex = this.resolveTargetIndex(latestEntries, index, frozenExpected);
 
 				if (targetIndex === -1) {
@@ -1063,23 +1622,34 @@ export class TimelineManager {
 					return existing;
 				}
 
+				const previousEntry = latestEntries[targetIndex];
 				const clonedPayload = deepCloneEntry(frozenUpdated);
+				if (clonedPayload.timePending) {
+					clonedPayload.time = '';
+					clonedPayload.timePending = true;
+					clonedPayload.nodeId = clonedPayload.nodeId?.trim() || previousEntry.nodeId || createTimelineEntityId('nd');
+				} else {
+					clonedPayload.time = (clonedPayload.time || '').trim();
+					clonedPayload.timePending = undefined;
+					clonedPayload.nodeId = previousEntry.nodeId;
+				}
 				latestEntries[targetIndex] = clonedPayload;
-				const mergeIndex = latestEntries.findIndex((candidate, candidateIndex) =>
-					candidateIndex !== targetIndex && timelineNodeKey(candidate) === timelineNodeKey(clonedPayload)
-				);
-				if (mergeIndex >= 0) {
-					const target = latestEntries[mergeIndex];
-					const targetItems = (target.items || []).filter(item => item.description || item.chapter || item.origin || item.important);
-					const updatedItems = (clonedPayload.items || []).filter(item => item.description || item.chapter || item.origin || item.important);
-					target.items = [...targetItems, ...updatedItems];
-					latestEntries.splice(targetIndex, 1);
+
+				if (!clonedPayload.timePending && !clonedPayload.nodeId) {
+					const mergeIndex = latestEntries.findIndex((candidate, candidateIndex) =>
+						candidateIndex !== targetIndex && !candidate.timePending && !candidate.nodeId &&
+						timelineNodeKey(candidate) === timelineNodeKey(clonedPayload)
+					);
+					if (mergeIndex >= 0) {
+						const target = latestEntries[mergeIndex];
+						const targetItems = (target.items || []).filter(isTimelineItemNonEmpty);
+						const updatedItems = (clonedPayload.items || []).filter(isTimelineItemNonEmpty);
+						target.items = [...targetItems, ...updatedItems];
+						latestEntries.splice(targetIndex, 1);
+					}
 				}
 
-				let content = '';
-				for (const entry of latestEntries) {
-					content += this.formatEntry(entry);
-				}
+				const content = this.serializeDocument(latestEntries, pendingEvents);
 				finalContent = content;
 				writeSuccess = true;
 				return content;
@@ -1106,6 +1676,7 @@ export class TimelineManager {
 
 			await this.processTimelineFile(file, (existing) => {
 				const latestEntries = this.parseEntries(existing, folder);
+				const pendingEvents = this.parsePendingEvents(existing);
 				const targetIndex = this.resolveTargetIndex(latestEntries, index, frozenExpected);
 
 				if (targetIndex === -1) {
@@ -1119,10 +1690,7 @@ export class TimelineManager {
 
 				latestEntries.splice(targetIndex, 1);
 
-				let content = '';
-				for (const entry of latestEntries) {
-					content += this.formatEntry(entry);
-				}
+				const content = this.serializeDocument(latestEntries, pendingEvents);
 				finalContent = content;
 				writeSuccess = true;
 				return content;
@@ -1156,6 +1724,7 @@ export class TimelineManager {
 
 			await this.processTimelineFile(file, (existing) => {
 				const latestEntries = this.parseEntries(existing, folder);
+				const pendingEvents = this.parsePendingEvents(existing);
 				const actualFromIndex = this.resolveTargetIndex(latestEntries, fromIndex, frozenExpectedFrom);
 				if (actualFromIndex === -1) {
 					if (frozenExpectedFrom) {
@@ -1189,10 +1758,7 @@ export class TimelineManager {
 				const [moved] = latestEntries.splice(actualFromIndex, 1);
 				latestEntries.splice(actualToIndex, 0, moved);
 
-				let content = '';
-				for (const entry of latestEntries) {
-					content += this.formatEntry(entry);
-				}
+				const content = this.serializeDocument(latestEntries, pendingEvents);
 				finalContent = content;
 				writeSuccess = true;
 				return content;
@@ -1230,6 +1796,7 @@ export class TimelineManager {
 
 			await this.processTimelineFile(file, (existing) => {
 				const latestEntries = this.parseEntries(existing, folder);
+				const pendingEvents = this.parsePendingEvents(existing);
 
 				let sourceIndex = -1;
 				if (typeof sourceNode === 'number') {
@@ -1339,10 +1906,7 @@ export class TimelineManager {
 					let adjustedInsert = insertIndex;
 					if (actualSourceItemIndex < adjustedInsert) adjustedInsert--;
 					if (actualSourceItemIndex === adjustedInsert) {
-						let content = '';
-						for (const entry of latestEntries) {
-							content += this.formatEntry(entry);
-						}
+						const content = this.serializeDocument(latestEntries, pendingEvents);
 						finalContent = content;
 						writeSuccess = true;
 						return content;
@@ -1367,10 +1931,7 @@ export class TimelineManager {
 				targetEntry.items.splice(insertIndex, 0, movedItem);
 				targetEntry.chapter = aggregateTimelineChapterLists(targetEntry.items.map(it => it.chapter));
 
-				let content = '';
-				for (const entry of latestEntries) {
-					content += this.formatEntry(entry);
-				}
+				const content = this.serializeDocument(latestEntries, pendingEvents);
 				finalContent = content;
 				writeSuccess = true;
 				return content;
@@ -1434,6 +1995,7 @@ export class TimelineManager {
 
 			await this.processTimelineFile(file, (existing) => {
 				const latestEntries = this.parseEntries(existing, folder);
+				const pendingEvents = this.parsePendingEvents(existing);
 
 				// STEP 1: If targetEvents is not empty, resolve and validate ALL targets BEFORE removing any links!
 				interface ResolvedTarget {
@@ -1463,7 +2025,7 @@ export class TimelineManager {
 							}
 							matchedEntry = latestEntries[target.entryIndex];
 						} else if (target.time) {
-							const matches = latestEntries.filter(e => e.time === target.time);
+							const matches = latestEntries.filter(e => !e.timePending && e.time === target.time);
 							if (matches.length === 1) {
 								matchedEntry = matches[0];
 							} else {
@@ -1526,13 +2088,397 @@ export class TimelineManager {
 					entry.chapter = aggregateTimelineChapterLists(entry.items!.map(it => it.chapter));
 				}
 
-				let content = '';
-				for (const entry of latestEntries) {
-					content += this.formatEntry(entry);
-				}
+				const content = this.serializeDocument(latestEntries, pendingEvents);
 				finalContent = content;
 				writeSuccess = true;
 				return content;
+			});
+
+			if (writeSuccess) {
+				const resultingEntries = this.parseEntries(finalContent, folder);
+				await this.reconcileFrontmatter(folder, resultingEntries, file);
+			}
+			return finalContent;
+		});
+	}
+
+	async addPendingEvent(
+		input: { description: string; chapter?: string; origin?: string; important?: boolean },
+		folderPath?: string
+	): Promise<{ content: string; event: PendingTimelineEvent }> {
+		const folder = this.normalizeFolderPath(folderPath);
+		const description = (input.description || '').trim();
+		const chapter = serializeTimelineChapterList(parseTimelineChapterList(input.chapter));
+		const origin = input.origin?.trim() || undefined;
+		const important = input.important ? true : undefined;
+
+		const createdEvent: PendingTimelineEvent = {
+			id: createTimelineEntityId('pe'),
+			description,
+			chapter,
+			origin,
+			important
+		};
+		const frozenEvent = deepFreezeEntry(deepClonePendingEvent(createdEvent));
+
+		return this.writer.enqueue(async () => {
+			let file = this.getTimelineFile(folder);
+			if (!file) file = await this.createTimelineFile(folder);
+
+			let finalContent = '';
+			await this.processTimelineFile(file, (existing) => {
+				const pendingEvents = this.parsePendingEvents(existing);
+				pendingEvents.unshift(deepClonePendingEvent(frozenEvent));
+				finalContent = this.replacePendingSection(existing, pendingEvents);
+				return finalContent;
+			});
+			return { content: finalContent, event: deepClonePendingEvent(frozenEvent) };
+		});
+	}
+
+	async updatePendingEvent(
+		pendingId: string,
+		patch: Partial<Pick<PendingTimelineEvent, 'description' | 'chapter' | 'origin' | 'important'>>,
+		folderPath?: string,
+		expectedEvent?: PendingTimelineEvent
+	): Promise<string> {
+		const folder = this.normalizeFolderPath(folderPath);
+		const frozenExpected = expectedEvent ? deepFreezeEntry(deepClonePendingEvent(expectedEvent)) : undefined;
+
+		return this.writer.enqueue(async () => {
+			const file = this.getTimelineFile(folder);
+			if (!file) {
+				showPluginNotice(t('timeline.conflict-notice'));
+				throw new Error(t('timeline.conflict-notice'));
+			}
+
+			let finalContent = '';
+			await this.processTimelineFile(file, (existing) => {
+				const pendingEvents = this.parsePendingEvents(existing);
+				const targetIdx = this.resolvePendingIndex(pendingEvents, pendingId, frozenExpected);
+				if (targetIdx === -1) {
+					showPluginNotice(t('timeline.conflict-notice'));
+					throw new Error(t('timeline.conflict-notice'));
+				}
+				const current = pendingEvents[targetIdx];
+				const nextDesc = patch.description !== undefined ? patch.description.trim() : current.description;
+				const nextChapter = patch.chapter !== undefined
+					? serializeTimelineChapterList(parseTimelineChapterList(patch.chapter))
+					: current.chapter;
+				const nextOrigin = patch.origin !== undefined ? (patch.origin.trim() || undefined) : current.origin;
+				const nextImportant = patch.important !== undefined ? (patch.important ? true : undefined) : current.important;
+
+				const updatedEvent: PendingTimelineEvent = {
+					id: current.id,
+					description: nextDesc,
+					chapter: nextChapter,
+					origin: nextOrigin,
+					important: nextImportant
+				};
+				pendingEvents[targetIdx] = updatedEvent;
+				finalContent = this.replacePendingSection(existing, pendingEvents);
+				return finalContent;
+			});
+			return finalContent;
+		});
+	}
+
+	async deletePendingEvent(
+		pendingId: string,
+		folderPath?: string,
+		expectedEvent?: PendingTimelineEvent
+	): Promise<string> {
+		const folder = this.normalizeFolderPath(folderPath);
+		const frozenExpected = expectedEvent ? deepFreezeEntry(deepClonePendingEvent(expectedEvent)) : undefined;
+
+		return this.writer.enqueue(async () => {
+			const file = this.getTimelineFile(folder);
+			if (!file) {
+				showPluginNotice(t('timeline.conflict-notice'));
+				throw new Error(t('timeline.conflict-notice'));
+			}
+
+			let finalContent = '';
+			await this.processTimelineFile(file, (existing) => {
+				const pendingEvents = this.parsePendingEvents(existing);
+				const targetIdx = this.resolvePendingIndex(pendingEvents, pendingId, frozenExpected);
+				if (targetIdx === -1) {
+					showPluginNotice(t('timeline.conflict-notice'));
+					throw new Error(t('timeline.conflict-notice'));
+				}
+				pendingEvents.splice(targetIdx, 1);
+				finalContent = this.replacePendingSection(existing, pendingEvents);
+				return finalContent;
+			});
+			return finalContent;
+		});
+	}
+
+	async placePendingEventIntoNode(
+		pendingId: string,
+		targetEntryIndex: number,
+		targetItemIndex?: number,
+		folderPath?: string,
+		expectedPending?: PendingTimelineEvent,
+		expectedTargetEntry?: TimelineEntry
+	): Promise<string> {
+		const folder = this.normalizeFolderPath(folderPath);
+		const frozenPending = expectedPending ? deepFreezeEntry(deepClonePendingEvent(expectedPending)) : undefined;
+		const frozenTarget = expectedTargetEntry ? deepFreezeEntry(deepCloneEntry(expectedTargetEntry)) : undefined;
+
+		return this.writer.enqueue(async () => {
+			const file = this.getTimelineFile(folder);
+			if (!file) {
+				showPluginNotice(t('timeline.conflict-notice'));
+				throw new Error(t('timeline.conflict-notice'));
+			}
+
+			let finalContent = '';
+			let writeSuccess = false;
+
+			await this.processTimelineFile(file, (existing) => {
+				const latestEntries = this.parseEntries(existing, folder);
+				const pendingEvents = this.parsePendingEvents(existing);
+
+				const pendingIdx = this.resolvePendingIndex(pendingEvents, pendingId, frozenPending);
+				if (pendingIdx === -1) {
+					showPluginNotice(t('timeline.conflict-notice'));
+					throw new Error(t('timeline.conflict-notice'));
+				}
+
+				const targetIdx = this.resolveTargetIndex(latestEntries, targetEntryIndex, frozenTarget);
+				if (targetIdx === -1) {
+					showPluginNotice(t('timeline.conflict-notice'));
+					throw new Error(t('timeline.conflict-notice'));
+				}
+
+				const pendingEvent = pendingEvents[pendingIdx];
+				if (!isTimelineItemNonEmpty(pendingEvent)) throw new Error(t('timeline.pending-empty-error'));
+				pendingEvents.splice(pendingIdx, 1);
+				const targetEntry = latestEntries[targetIdx];
+				const existingItems = (targetEntry.items || []).filter(isTimelineItemNonEmpty);
+				const insertIdx = targetItemIndex !== undefined && Number.isInteger(targetItemIndex)
+					? Math.max(0, Math.min(targetItemIndex, existingItems.length))
+					: existingItems.length;
+
+				const newItem: TimelineItem = {
+					description: pendingEvent.description,
+					chapter: pendingEvent.chapter,
+					origin: pendingEvent.origin,
+					important: pendingEvent.important
+				};
+				existingItems.splice(insertIdx, 0, newItem);
+				targetEntry.items = existingItems;
+				targetEntry.description = existingItems.map(it => it.description).filter(Boolean).join('\n');
+				targetEntry.chapter = aggregateTimelineChapterLists(existingItems.map(it => it.chapter));
+
+				finalContent = this.serializeDocument(latestEntries, pendingEvents);
+				writeSuccess = true;
+				return finalContent;
+			});
+
+			if (writeSuccess) {
+				const resultingEntries = this.parseEntries(finalContent, folder);
+				await this.reconcileFrontmatter(folder, resultingEntries, file);
+			}
+			return finalContent;
+		});
+	}
+
+	async createNodeFromPendingEvent(
+		pendingId: string,
+		nodeSpec: { time: string; timePending?: boolean; type?: string; lores?: string[] },
+		anchor: TimelineInsertAnchor,
+		folderPath?: string,
+		expectedPending?: PendingTimelineEvent
+	): Promise<string> {
+		const folder = this.normalizeFolderPath(folderPath);
+		const isTimePending = Boolean(nodeSpec.timePending);
+		const trimmedTime = isTimePending ? '' : (nodeSpec.time || '').trim();
+		if (!isTimePending && !trimmedTime) {
+			showPluginNotice(t('modal.please-fill-time-point'));
+			throw new Error(t('modal.please-fill-time-point'));
+		}
+
+		const canonicalLores = this.canonicalizeLoreList(nodeSpec.lores || [], folder);
+		const frozenPending = expectedPending ? deepFreezeEntry(deepClonePendingEvent(expectedPending)) : undefined;
+		const frozenAfter = anchor.expectedAfterEntry ? deepFreezeEntry(deepCloneEntry(anchor.expectedAfterEntry)) : undefined;
+		const frozenBefore = anchor.expectedBeforeEntry ? deepFreezeEntry(deepCloneEntry(anchor.expectedBeforeEntry)) : undefined;
+
+		return this.writer.enqueue(async () => {
+			const file = this.getTimelineFile(folder);
+			if (!file) {
+				showPluginNotice(t('timeline.conflict-notice'));
+				throw new Error(t('timeline.conflict-notice'));
+			}
+
+			let finalContent = '';
+			let writeSuccess = false;
+
+			await this.processTimelineFile(file, (existing) => {
+				const latestEntries = this.parseEntries(existing, folder);
+				const pendingEvents = this.parsePendingEvents(existing);
+
+				const pendingIdx = this.resolvePendingIndex(pendingEvents, pendingId, frozenPending);
+				if (pendingIdx === -1) {
+					showPluginNotice(t('timeline.conflict-notice'));
+					throw new Error(t('timeline.conflict-notice'));
+				}
+
+				let resolvedAfter = -1;
+				if (anchor.afterEntryIndex !== undefined || frozenAfter) {
+					resolvedAfter = this.resolveTargetIndex(latestEntries, anchor.afterEntryIndex ?? -1, frozenAfter);
+					if (resolvedAfter === -1) {
+						showPluginNotice(t('timeline.conflict-notice'));
+						throw new Error(t('timeline.conflict-notice'));
+					}
+				}
+
+				let resolvedBefore = -1;
+				if (anchor.beforeEntryIndex !== undefined || frozenBefore) {
+					resolvedBefore = this.resolveTargetIndex(latestEntries, anchor.beforeEntryIndex ?? -1, frozenBefore);
+					if (resolvedBefore === -1) {
+						showPluginNotice(t('timeline.conflict-notice'));
+						throw new Error(t('timeline.conflict-notice'));
+					}
+				}
+
+				let insertIdx: number;
+				if (resolvedAfter >= 0 && resolvedBefore >= 0) {
+					if (resolvedAfter >= resolvedBefore) {
+						showPluginNotice(t('timeline.conflict-notice'));
+						throw new Error(t('timeline.conflict-notice'));
+					}
+					insertIdx = resolvedAfter + 1;
+				} else if (resolvedAfter >= 0) {
+					insertIdx = resolvedAfter + 1;
+				} else if (resolvedBefore >= 0) {
+					insertIdx = resolvedBefore;
+				} else {
+					insertIdx = anchor.fallbackIndex !== undefined && Number.isInteger(anchor.fallbackIndex)
+						? Math.max(0, Math.min(anchor.fallbackIndex, latestEntries.length))
+						: latestEntries.length;
+				}
+
+				const pendingEvent = pendingEvents[pendingIdx];
+				if (!isTimelineItemNonEmpty(pendingEvent)) throw new Error(t('timeline.pending-empty-error'));
+				pendingEvents.splice(pendingIdx, 1);
+				const item: TimelineItem = {
+					description: pendingEvent.description,
+					chapter: pendingEvent.chapter,
+					origin: pendingEvent.origin,
+					important: pendingEvent.important
+				};
+				const newEntry: TimelineEntry = {
+					time: trimmedTime,
+					timePending: isTimePending ? true : undefined,
+					nodeId: createTimelineEntityId('nd'),
+					type: nodeSpec.type?.trim() || '',
+					description: item.description,
+					chapter: item.chapter,
+					origin: item.origin,
+					important: item.important,
+					rawBlock: '',
+					lores: canonicalLores.length > 0 ? canonicalLores : undefined,
+					items: [item]
+				};
+
+				latestEntries.splice(insertIdx, 0, newEntry);
+				finalContent = this.serializeDocument(latestEntries, pendingEvents);
+				writeSuccess = true;
+				return finalContent;
+			});
+
+			if (writeSuccess) {
+				const resultingEntries = this.parseEntries(finalContent, folder);
+				await this.reconcileFrontmatter(folder, resultingEntries, file);
+			}
+			return finalContent;
+		});
+	}
+
+	async moveEventToPending(
+		sourceEntryIndex: number,
+		sourceItemIndex: number,
+		folderPath?: string,
+		expectedItem?: TimelineItem,
+		expectedSourceEntry?: TimelineEntry
+	): Promise<string> {
+		const folder = this.normalizeFolderPath(folderPath);
+		const frozenExpectedItem = expectedItem ? deepFreezeEntry(deepCloneItem(expectedItem)) : undefined;
+		const frozenSourceEntry = expectedSourceEntry ? deepFreezeEntry(deepCloneEntry(expectedSourceEntry)) : undefined;
+
+		return this.writer.enqueue(async () => {
+			const file = this.getTimelineFile(folder);
+			if (!file) {
+				showPluginNotice(t('timeline.conflict-notice'));
+				throw new Error(t('timeline.conflict-notice'));
+			}
+
+			let finalContent = '';
+			let writeSuccess = false;
+
+			await this.processTimelineFile(file, (existing) => {
+				const latestEntries = this.parseEntries(existing, folder);
+				const pendingEvents = this.parsePendingEvents(existing);
+
+				const sourceIndex = this.resolveTargetIndex(latestEntries, sourceEntryIndex, frozenSourceEntry);
+				if (sourceIndex === -1) {
+					showPluginNotice(t('timeline.conflict-notice'));
+					throw new Error(t('timeline.conflict-notice'));
+				}
+				const sourceEntry = latestEntries[sourceIndex];
+				if (!sourceEntry.items || sourceEntry.items.length === 0) {
+					showPluginNotice(t('timeline.conflict-notice'));
+					throw new Error(t('timeline.conflict-notice'));
+				}
+
+				let actualItemIdx = -1;
+				if (frozenExpectedItem) {
+					const itemMatches: number[] = [];
+					for (let i = 0; i < sourceEntry.items.length; i++) {
+						const it = sourceEntry.items[i];
+						if (
+							(it.description || '').trim() === (frozenExpectedItem.description || '').trim() &&
+							serializeTimelineChapterList(parseTimelineChapterList(it.chapter)) === serializeTimelineChapterList(parseTimelineChapterList(frozenExpectedItem.chapter)) &&
+							(it.origin?.trim() || undefined) === (frozenExpectedItem.origin?.trim() || undefined) &&
+							!!it.important === !!frozenExpectedItem.important
+						) {
+							itemMatches.push(i);
+						}
+					}
+					if (Number.isInteger(sourceItemIndex) && sourceItemIndex >= 0 && itemMatches.includes(sourceItemIndex)) {
+						actualItemIdx = sourceItemIndex;
+					} else if (itemMatches.length === 1) {
+						actualItemIdx = itemMatches[0];
+					} else {
+						showPluginNotice(t('timeline.conflict-notice'));
+						throw new Error(t('timeline.conflict-notice'));
+					}
+				} else {
+					if (!Number.isInteger(sourceItemIndex) || sourceItemIndex < 0 || sourceItemIndex >= sourceEntry.items.length) {
+						showPluginNotice(t('timeline.conflict-notice'));
+						throw new Error(t('timeline.conflict-notice'));
+					}
+					actualItemIdx = sourceItemIndex;
+				}
+
+				const [removedItem] = sourceEntry.items.splice(actualItemIdx, 1);
+				sourceEntry.description = sourceEntry.items.map(it => it.description).filter(Boolean).join('\n');
+				sourceEntry.chapter = aggregateTimelineChapterLists(sourceEntry.items.map(it => it.chapter));
+				// Preserve sourceEntry even when sourceEntry.items becomes empty (empty structural node).
+
+				pendingEvents.unshift({
+					id: createTimelineEntityId('pe'),
+					description: removedItem.description || '',
+					chapter: removedItem.chapter || '',
+					origin: removedItem.origin,
+					important: removedItem.important ? true : undefined
+				});
+
+				finalContent = this.serializeDocument(latestEntries, pendingEvents);
+				writeSuccess = true;
+				return finalContent;
 			});
 
 			if (writeSuccess) {

@@ -21,6 +21,8 @@ import { getLatestChapterFolderPath } from '../src/utils/path';
 import { LoreBoardRenderer } from '../src/ui/components/LoreBoardRenderer';
 import { LoreCardRenderer } from '../src/ui/components/LoreCardRenderer';
 import { LoreHoverPopover } from '../src/ui/LoreHoverPopover';
+import { AdaptiveDebounceManager } from '../src/services/AdaptiveDebounceManager';
+import { GraphRenderer } from '../src/ui/components/GraphRenderer';
 
 const { getCurrentBookContextMock, findBookRootMock, MockTFile, MockTFolder, mockMenuInstances, MockMenu, mockModalInstances, MockModal } = vi.hoisted(() => {
 	class HoistedMockMenuItem {
@@ -395,6 +397,40 @@ describe('WorkbenchView', () => {
 		} as unknown as WorkbenchViewPlugin;
 	});
 
+	it('converts an ordinary wheel to horizontal scrolling only over a horizontal list', async () => {
+		const view = new WorkbenchView(mockLeaf as never, plugin);
+		await view.onOpen();
+
+		const root = view.contentEl as unknown as MockElement;
+		const row = Object.assign(root.createDiv('wn-lore-file-tabs'), {
+			nodeType: 1, scrollWidth: 240, clientWidth: 100, scrollHeight: 30, clientHeight: 30, scrollLeft: 0
+		});
+		const label = Object.assign(row.createSpan({ text: 'Example category' }), { nodeType: 1 });
+		const style = { overflowX: 'auto', overflowY: 'auto', lineHeight: '18px' };
+		(view.contentEl.ownerDocument as unknown as { defaultView: unknown }).defaultView = {
+			getComputedStyle: vi.fn(() => style)
+		};
+		const preventDefault = vi.fn();
+		const wheel = { target: label, cancelable: true, deltaMode: 1, deltaY: 3, deltaX: 0, preventDefault };
+
+		root.dispatchEvent('wheel', wheel);
+		expect(row.scrollLeft).toBe(54);
+		expect(preventDefault).toHaveBeenCalledTimes(1);
+
+		root.dispatchEvent('wheel', { ...wheel, deltaX: 20 });
+		root.dispatchEvent('wheel', { ...wheel, shiftKey: true });
+		root.dispatchEvent('wheel', { ...wheel, ctrlKey: true });
+		root.dispatchEvent('wheel', { ...wheel, defaultPrevented: true });
+		row.scrollHeight = 120;
+		root.dispatchEvent('wheel', wheel);
+		expect(row.scrollLeft).toBe(54);
+		expect(preventDefault).toHaveBeenCalledTimes(1);
+
+		const removeListener = vi.spyOn(root, 'removeEventListener');
+		await view.onClose();
+		expect(removeListener).toHaveBeenCalledWith('wheel', expect.any(Function));
+	});
+
 	it.each([
 		[{ status: 'draft' }, '草稿'],
 		[{ Status: 'Final' }, '已完稿'],
@@ -637,6 +673,428 @@ describe('WorkbenchView', () => {
 			(MockElement.prototype as unknown as { matches?: unknown }).matches = originalMatches;
 			(globalThis as unknown as { ResizeObserver?: unknown }).ResizeObserver = originalResizeObserver;
 			(globalThis as unknown as { MutationObserver?: unknown }).MutationObserver = originalMutationObserver;
+			vi.useRealTimers();
+		}
+	});
+
+	it('coalesces lore save bursts and updates mounted workbench lore graph in place without replacing canvas or moving converged nodes', async () => {
+		vi.useFakeTimers();
+		const vaultHandlers: Record<string, Array<(...args: unknown[]) => void>> = {};
+		const metadataHandlers: Record<string, Array<(...args: unknown[]) => void>> = {};
+		const workspaceHandlers: Record<string, Array<(...args: unknown[]) => void>> = {};
+
+		mockApp.vault.on.mockImplementation((event: string, cb: (...args: unknown[]) => void) => {
+			if (!vaultHandlers[event]) vaultHandlers[event] = [];
+			vaultHandlers[event].push(cb);
+			return { event };
+		});
+		mockApp.metadataCache.on.mockImplementation((event: string, cb: (...args: unknown[]) => void) => {
+			if (!metadataHandlers[event]) metadataHandlers[event] = [];
+			metadataHandlers[event].push(cb);
+			return { event };
+		});
+		mockApp.workspace.on.mockImplementation((event: string, cb: (...args: unknown[]) => void) => {
+			if (!workspaceHandlers[event]) workspaceHandlers[event] = [];
+			workspaceHandlers[event].push(cb);
+			return { event };
+		});
+
+		const bodyEl = new MockElement('body');
+		let rafIdCounter = 1;
+		const scheduledRafs = new Map<number, () => void>();
+		const ownerWindow = Object.assign(new EventTarget(), {
+			createDiv: () => new MockElement('div'),
+			createFragment: () => new MockElement(''),
+			setTimeout: (cb: () => void, ms?: number) => globalThis.setTimeout(cb, ms) as unknown as number,
+			clearTimeout: (id: number) => globalThis.clearTimeout(id),
+			requestAnimationFrame: (cb: () => void) => {
+				const id = rafIdCounter++;
+				scheduledRafs.set(id, cb);
+				return id;
+			},
+			cancelAnimationFrame: (id: number) => {
+				scheduledRafs.delete(id);
+			},
+			devicePixelRatio: 1
+		}) as unknown as Window & EventTarget & { createDiv: () => MockElement; createFragment: () => MockElement };
+		const flushRafFrames = (maxFrames = 200) => {
+			let frames = 0;
+			while (scheduledRafs.size > 0 && frames < maxFrames) {
+				const batch = Array.from(scheduledRafs.entries());
+				scheduledRafs.clear();
+				for (const [, cb] of batch) cb();
+				frames++;
+			}
+			return frames;
+		};
+
+		const ownerDocument = Object.assign(new EventTarget(), {
+			defaultView: ownerWindow,
+			win: ownerWindow,
+			visibilityState: 'visible',
+			body: bodyEl,
+			addEventListener: EventTarget.prototype.addEventListener,
+			removeEventListener: EventTarget.prototype.removeEventListener
+		}) as unknown as Document & { visibilityState: string };
+		(bodyEl as unknown as { ownerDocument: Document }).ownerDocument = ownerDocument;
+
+		const originalCreateDiv = MockElement.prototype.createDiv;
+		const originalCreateEl = MockElement.prototype.createEl;
+		const originalSetCssStyles = (MockElement.prototype as unknown as { setCssStyles?: unknown }).setCssStyles;
+		const originalGetRect = (MockElement.prototype as unknown as { getBoundingClientRect?: unknown }).getBoundingClientRect;
+		const originalGetContext = (MockElement.prototype as unknown as { getContext?: unknown }).getContext;
+		const originalResizeObserver = (globalThis as unknown as { ResizeObserver?: unknown }).ResizeObserver;
+		const originalGetComputedStyle = (globalThis as unknown as { getComputedStyle?: unknown }).getComputedStyle;
+
+		MockElement.prototype.createDiv = function (this: MockElement, opts?: string | { cls?: string; text?: string }) {
+			const child = originalCreateDiv.call(this, opts);
+			(child as unknown as { ownerDocument: Document }).ownerDocument =
+				(this as unknown as { ownerDocument?: Document }).ownerDocument ?? ownerDocument;
+			return child;
+		};
+		MockElement.prototype.createEl = function (this: MockElement, tag: string, opts?: { cls?: string; text?: string; type?: string; value?: string }) {
+			const child = originalCreateEl.call(this, tag, opts);
+			(child as unknown as { ownerDocument: Document }).ownerDocument =
+				(this as unknown as { ownerDocument?: Document }).ownerDocument ?? ownerDocument;
+			return child;
+		};
+		(MockElement.prototype as unknown as { setCssStyles: (s: Record<string, string>) => void }).setCssStyles = vi.fn();
+		(MockElement.prototype as unknown as { getBoundingClientRect: () => DOMRect }).getBoundingClientRect = () => ({
+			left: 0, top: 0, right: 600, bottom: 400, width: 600, height: 400, x: 0, y: 0, toJSON: () => ({})
+		});
+		(MockElement.prototype as unknown as { getContext: () => unknown }).getContext = () => ({
+			clearRect: vi.fn(), save: vi.fn(), restore: vi.fn(), scale: vi.fn(), translate: vi.fn(),
+			beginPath: vi.fn(), moveTo: vi.fn(), lineTo: vi.fn(), quadraticCurveTo: vi.fn(),
+			closePath: vi.fn(), clip: vi.fn(), arc: vi.fn(), fill: vi.fn(), stroke: vi.fn(),
+			fillRect: vi.fn(), strokeRect: vi.fn(), fillText: vi.fn(), strokeText: vi.fn(), setLineDash: vi.fn(),
+			measureText: () => ({ width: 20 }),
+			createLinearGradient: () => ({ addColorStop: vi.fn() })
+		});
+		vi.stubGlobal('ResizeObserver', class {
+			observe = vi.fn();
+			disconnect = vi.fn();
+		});
+		vi.stubGlobal('getComputedStyle', () => ({ getPropertyValue: () => '' }));
+
+		const debounceManager = new AdaptiveDebounceManager();
+		const renderSpy = vi.spyOn(GraphRenderer, 'render');
+		const buildOffsetsSpy = vi.spyOn(GraphRenderer, 'buildEdgeOffsets');
+
+		try {
+			const loreFile = new MockTFile('Cast.md', 'NovelA/设定/Cast.md') as unknown as TFile;
+			const borrowedFile = new MockTFile('Shared.md', 'NovelB/设定/公共设定/Shared.md') as unknown as TFile;
+			plugin.settings.corkboardSortMode = 'lore';
+			plugin.settings.loreBoardLayout = 'graph';
+			plugin.adaptiveDebounceManager = debounceManager;
+			vi.mocked(plugin.characterManager.getEffectiveLoreFiles).mockReturnValue([loreFile, borrowedFile]);
+			vi.mocked(plugin.characterManager.getCharactersForBook).mockReturnValue(['Alpha', 'Beta', 'Gamma']);
+			vi.mocked(plugin.characterManager.getLoreEntriesInFileOrder).mockReturnValue([
+				{ file: loreFile, heading: 'Alpha' },
+				{ file: loreFile, heading: 'Beta' },
+				{ file: borrowedFile, heading: 'Gamma' }
+			]);
+
+			let edges: GraphData['edges'] = [
+				{ source: 'Alpha', target: 'Beta', label: 'Ally', type: 'explicit' }
+			];
+			const buildGraphData = vi.fn(async (): Promise<GraphData> => ({
+				nodes: [
+					{ id: 'Alpha', heading: 'Alpha', file: loreFile, sourcePath: loreFile.path, x: 0, y: 0, vx: 0, vy: 0, pinned: false, isProtagonist: true },
+					{ id: 'Beta', heading: 'Beta', file: loreFile, sourcePath: loreFile.path, x: 0, y: 0, vx: 0, vy: 0, pinned: false },
+					{ id: 'Gamma', heading: 'Gamma', file: borrowedFile, sourcePath: borrowedFile.path, x: 0, y: 0, vx: 0, vy: 0, pinned: false }
+				],
+				edges: edges.map(e => ({ ...e }))
+			}));
+			plugin.relationGraphManager = { buildGraphData };
+
+			const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+			(view.containerEl as unknown as { ownerDocument: Document }).ownerDocument = ownerDocument;
+			(view.contentEl as unknown as { ownerDocument: Document }).ownerDocument = ownerDocument;
+			view.currentBookPath = 'NovelA';
+			await view.onOpen();
+
+			// Converge initial physics completely
+			flushRafFrames(250);
+			expect(scheduledRafs.size).toBe(0);
+
+			const initialCanvas = view.contentEl.querySelector('.wn-lore-graph-canvas');
+			expect(initialCanvas).not.toBeNull();
+			expect(renderSpy).toHaveBeenCalled();
+
+			const lastInitialCall = renderSpy.mock.calls[renderSpy.mock.calls.length - 1];
+			const initialLayout = lastInitialCall[3];
+			const initialState = lastInitialCall[4];
+			const snapshotCoords = initialLayout.nodes.map(n => ({ id: n.id, x: n.x, y: n.y }));
+
+			// Adjust pan/zoom to verify transform preservation
+			initialState.scale = 1.45;
+			initialState.panX = 33;
+			initialState.panY = -27;
+
+			buildGraphData.mockClear();
+			renderSpy.mockClear();
+			buildOffsetsSpy.mockClear();
+
+			// Simulate one modal relation save burst: modify + immediate lore-updated + metadata changed + 300ms incremental lore-updated
+			edges = [
+				{ source: 'Alpha', target: 'Beta', label: 'Mentor', type: 'explicit' },
+				{ source: 'Beta', target: 'Gamma', label: 'Rival', type: 'explicit' }
+			];
+			vaultHandlers['modify']?.forEach(cb => cb(loreFile));
+			workspaceHandlers['webnovel-workbench-lore-updated']?.forEach(cb => cb());
+			metadataHandlers['changed']?.forEach(cb => cb(loreFile));
+			vi.advanceTimersByTime(300);
+			workspaceHandlers['webnovel-workbench-lore-updated']?.forEach(cb => cb());
+
+			// Must not have rebuilt before trailing debounce finishes
+			expect(buildGraphData).not.toHaveBeenCalled();
+
+			// Advance past trailing debounce window and flush microtasks + rAF
+			await vi.advanceTimersByTimeAsync(600);
+			const paintedFrames = flushRafFrames(50);
+
+			// Coalesced into a single graph rebuild, same canvas DOM node, single repaint, zero node movement
+			expect(buildGraphData).toHaveBeenCalledTimes(1);
+			expect(view.contentEl.querySelector('.wn-lore-graph-canvas')).toBe(initialCanvas);
+			expect(paintedFrames).toBe(1);
+			expect(renderSpy).toHaveBeenCalledTimes(1);
+			expect(buildOffsetsSpy).toHaveBeenCalledTimes(1);
+
+			const afterLayout = renderSpy.mock.calls[0][3];
+			const afterState = renderSpy.mock.calls[0][4];
+			expect(afterLayout).toBe(initialLayout);
+			expect(afterLayout.nodes.map(n => ({ id: n.id, x: n.x, y: n.y }))).toEqual(snapshotCoords);
+			expect(afterState.scale).toBe(1.45);
+			expect(afterState.panX).toBe(33);
+			expect(afterState.panY).toBe(-27);
+			expect(afterLayout.edges).toEqual(edges);
+
+			// Subsequent equivalent notification (e.g. borrowed file metadata change with identical data) must no-op on render
+			buildGraphData.mockClear();
+			renderSpy.mockClear();
+			buildOffsetsSpy.mockClear();
+			vaultHandlers['modify']?.forEach(cb => cb(borrowedFile));
+			await vi.advanceTimersByTimeAsync(600);
+			flushRafFrames(20);
+			expect(buildGraphData).toHaveBeenCalledTimes(1);
+			expect(renderSpy).not.toHaveBeenCalled();
+			expect(buildOffsetsSpy).not.toHaveBeenCalled();
+
+			// Closing while a refresh is pending must cancel it cleanly
+			buildGraphData.mockClear();
+			workspaceHandlers['webnovel-workbench-lore-updated']?.forEach(cb => cb());
+			await view.onClose();
+			await vi.advanceTimersByTimeAsync(1000);
+			expect(buildGraphData).not.toHaveBeenCalled();
+		} finally {
+			debounceManager.destroy();
+			renderSpy.mockRestore();
+			buildOffsetsSpy.mockRestore();
+			MockElement.prototype.createDiv = originalCreateDiv;
+			MockElement.prototype.createEl = originalCreateEl;
+			(MockElement.prototype as unknown as { setCssStyles?: unknown }).setCssStyles = originalSetCssStyles;
+			(MockElement.prototype as unknown as { getBoundingClientRect?: unknown }).getBoundingClientRect = originalGetRect;
+			(MockElement.prototype as unknown as { getContext?: unknown }).getContext = originalGetContext;
+			(globalThis as unknown as { ResizeObserver?: unknown }).ResizeObserver = originalResizeObserver;
+			(globalThis as unknown as { getComputedStyle?: unknown }).getComputedStyle = originalGetComputedStyle;
+			vi.useRealTimers();
+		}
+	});
+
+	it('handles filter count updates, empty/no-results transitions, and stale delayed refreshes on workbench lore graph', async () => {
+		vi.useFakeTimers();
+		const workspaceHandlers: Record<string, Array<(...args: unknown[]) => void>> = {};
+		mockApp.workspace.on.mockImplementation((event: string, cb: (...args: unknown[]) => void) => {
+			if (!workspaceHandlers[event]) workspaceHandlers[event] = [];
+			workspaceHandlers[event].push(cb);
+			return { event };
+		});
+
+		const bodyEl = new MockElement('body');
+		const ownerWindow = Object.assign(new EventTarget(), {
+			createDiv: () => new MockElement('div'),
+			createFragment: () => new MockElement(''),
+			setTimeout: (cb: () => void, ms?: number) => globalThis.setTimeout(cb, ms) as unknown as number,
+			clearTimeout: (id: number) => globalThis.clearTimeout(id),
+			requestAnimationFrame: (_cb: () => void) => 1,
+			cancelAnimationFrame: vi.fn(),
+			devicePixelRatio: 1
+		}) as unknown as Window & EventTarget & { createDiv: () => MockElement; createFragment: () => MockElement };
+		const ownerDocument = Object.assign(new EventTarget(), {
+			defaultView: ownerWindow,
+			win: ownerWindow,
+			visibilityState: 'visible',
+			body: bodyEl,
+			addEventListener: EventTarget.prototype.addEventListener,
+			removeEventListener: EventTarget.prototype.removeEventListener
+		}) as unknown as Document & { visibilityState: string };
+		(bodyEl as unknown as { ownerDocument: Document }).ownerDocument = ownerDocument;
+
+		const originalCreateDiv = MockElement.prototype.createDiv;
+		const originalCreateEl = MockElement.prototype.createEl;
+		const originalSetCssStyles = (MockElement.prototype as unknown as { setCssStyles?: unknown }).setCssStyles;
+		const originalGetRect = (MockElement.prototype as unknown as { getBoundingClientRect?: unknown }).getBoundingClientRect;
+		const originalGetContext = (MockElement.prototype as unknown as { getContext?: unknown }).getContext;
+		const originalResizeObserver = (globalThis as unknown as { ResizeObserver?: unknown }).ResizeObserver;
+
+		MockElement.prototype.createDiv = function (this: MockElement, opts?: string | { cls?: string; text?: string }) {
+			const child = originalCreateDiv.call(this, opts);
+			(child as unknown as { ownerDocument: Document }).ownerDocument =
+				(this as unknown as { ownerDocument?: Document }).ownerDocument ?? ownerDocument;
+			return child;
+		};
+		MockElement.prototype.createEl = function (this: MockElement, tag: string, opts?: { cls?: string; text?: string; type?: string; value?: string }) {
+			const child = originalCreateEl.call(this, tag, opts);
+			(child as unknown as { ownerDocument: Document }).ownerDocument =
+				(this as unknown as { ownerDocument?: Document }).ownerDocument ?? ownerDocument;
+			return child;
+		};
+		(MockElement.prototype as unknown as { setCssStyles: (s: Record<string, string>) => void }).setCssStyles = vi.fn();
+		(MockElement.prototype as unknown as { getBoundingClientRect: () => DOMRect }).getBoundingClientRect = () => ({
+			left: 0, top: 0, right: 600, bottom: 400, width: 600, height: 400, x: 0, y: 0, toJSON: () => ({})
+		});
+		(MockElement.prototype as unknown as { getContext: () => unknown }).getContext = () => ({
+			clearRect: vi.fn(), save: vi.fn(), restore: vi.fn(), scale: vi.fn(), translate: vi.fn(),
+			beginPath: vi.fn(), arc: vi.fn(), fill: vi.fn(), stroke: vi.fn(), fillText: vi.fn(),
+			measureText: () => ({ width: 20 })
+		});
+		vi.stubGlobal('ResizeObserver', class {
+			observe = vi.fn();
+			disconnect = vi.fn();
+		});
+
+		const debounceManager = new AdaptiveDebounceManager();
+		try {
+			const loreFileA = new MockTFile('CastA.md', 'NovelA/设定/CastA.md') as unknown as TFile;
+			const loreFileB = new MockTFile('CastB.md', 'NovelB/设定/CastB.md') as unknown as TFile;
+			let loreContentA = '## Alpha\nHeroic scout\n## Beta\nQuiet scholar';
+			mockApp.vault.cachedRead.mockImplementation(async (file: TFile) => (file === loreFileA ? loreContentA : '## Gamma\nTraveler'));
+
+			let effectiveFilesA: TFile[] = [loreFileA];
+			let entriesA = [
+				{ file: loreFileA, heading: 'Alpha' },
+				{ file: loreFileA, heading: 'Beta' }
+			];
+			plugin.settings.corkboardSortMode = 'lore';
+			plugin.settings.loreBoardLayout = 'graph';
+			plugin.adaptiveDebounceManager = debounceManager;
+			vi.mocked(plugin.characterManager.getEffectiveLoreFiles).mockImplementation((bookPath: string) =>
+				bookPath === 'NovelB' ? [loreFileB] : effectiveFilesA
+			);
+			vi.mocked(plugin.characterManager.getCharactersForBook).mockImplementation((bookPath: string) =>
+				bookPath === 'NovelB' ? ['Gamma'] : entriesA.map(e => e.heading)
+			);
+			vi.mocked(plugin.characterManager.getLoreEntriesInFileOrder).mockImplementation((bookPath: string) =>
+				bookPath === 'NovelB' ? [{ file: loreFileB, heading: 'Gamma' }] : entriesA
+			);
+
+			let pendingBuildResolve: ((data: GraphData) => void) | null = null;
+			let deferNextBuild = false;
+			plugin.relationGraphManager = {
+				buildGraphData: vi.fn((file: TFile): Promise<GraphData> => {
+					if (deferNextBuild) {
+						deferNextBuild = false;
+						return new Promise<GraphData>(resolve => {
+							pendingBuildResolve = resolve;
+						});
+					}
+					if (file === loreFileB) {
+						return Promise.resolve({
+							nodes: [{ id: 'Gamma', heading: 'Gamma', file: loreFileB, sourcePath: loreFileB.path, x: 0, y: 0, vx: 0, vy: 0, pinned: false }],
+							edges: []
+						});
+					}
+					return Promise.resolve({
+						nodes: entriesA.map(e => ({ id: e.heading, heading: e.heading, file: loreFileA, sourcePath: loreFileA.path, x: 0, y: 0, vx: 0, vy: 0, pinned: false })),
+						edges: []
+					});
+				})
+			};
+
+			const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+			(view.containerEl as unknown as { ownerDocument: Document }).ownerDocument = ownerDocument;
+			(view.contentEl as unknown as { ownerDocument: Document }).ownerDocument = ownerDocument;
+			view.currentBookPath = 'NovelA';
+			(view as unknown as { loreFilterQuery: string }).loreFilterQuery = 'heroic';
+			await view.onOpen();
+
+			const initialCanvas = view.contentEl.querySelector('.wn-lore-graph-canvas');
+			expect(initialCanvas).not.toBeNull();
+			expect(view.contentEl.querySelector('.wn-workbench-filter-count')?.textContent).toBe('1 / 2');
+
+			// 1. In-place filter count update when second entry now matches query
+			loreContentA = '## Alpha\nHeroic scout\n## Beta\nHeroic scholar';
+			workspaceHandlers['webnovel-workbench-lore-updated']?.forEach(cb => cb());
+			await vi.advanceTimersByTimeAsync(600);
+			expect(view.contentEl.querySelector('.wn-lore-graph-canvas')).toBe(initialCanvas);
+			expect(view.contentEl.querySelector('.wn-workbench-filter-count')?.textContent).toBe('2 / 2');
+
+			// 2. Transition to filter-no-results falls back to full board rebuild and clears mounted graph
+			loreContentA = '## Alpha\nPlain scout\n## Beta\nPlain scholar';
+			workspaceHandlers['webnovel-workbench-lore-updated']?.forEach(cb => cb());
+			await vi.advanceTimersByTimeAsync(600);
+			expect(view.contentEl.querySelector('.wn-lore-graph-canvas')).toBeNull();
+			expect(view.contentEl.querySelector('.wn-corkboard-empty-msg')?.textContent).toBe('corkboard.filter-no-results');
+
+			// 3. Recovery from filter-no-results mounts graph again
+			loreContentA = '## Alpha\nHeroic scout\n## Beta\nPlain scholar';
+			workspaceHandlers['webnovel-workbench-lore-updated']?.forEach(cb => cb());
+			await vi.advanceTimersByTimeAsync(600);
+			const recoveredCanvas = view.contentEl.querySelector('.wn-lore-graph-canvas');
+			expect(recoveredCanvas).not.toBeNull();
+
+			// 4. Transition to no-data falls back to full board rebuild and recovers when data returns
+			(view as unknown as { loreFilterQuery: string }).loreFilterQuery = '';
+			await view.reloadBoard();
+			effectiveFilesA = [];
+			entriesA = [];
+			workspaceHandlers['webnovel-workbench-lore-updated']?.forEach(cb => cb());
+			await vi.advanceTimersByTimeAsync(600);
+			expect(view.contentEl.querySelector('.wn-lore-graph-canvas')).toBeNull();
+			expect(view.contentEl.querySelector('.wn-corkboard-empty-msg')?.textContent).toBe('corkboard.no-lore');
+
+			effectiveFilesA = [loreFileA];
+			entriesA = [{ file: loreFileA, heading: 'Alpha' }];
+			workspaceHandlers['webnovel-workbench-lore-updated']?.forEach(cb => cb());
+			await vi.advanceTimersByTimeAsync(600);
+			const restoredCanvas = view.contentEl.querySelector('.wn-lore-graph-canvas');
+			expect(restoredCanvas).not.toBeNull();
+
+			// A newer notification makes the pending result stale before its own timer fires.
+			deferNextBuild = true;
+			workspaceHandlers['webnovel-workbench-lore-updated']?.forEach(cb => cb());
+			await vi.advanceTimersByTimeAsync(600);
+			expect(pendingBuildResolve).not.toBeNull();
+			workspaceHandlers['webnovel-workbench-lore-updated']?.forEach(cb => cb());
+			pendingBuildResolve!({ nodes: [], edges: [] });
+			await vi.advanceTimersByTimeAsync(600);
+			expect(view.contentEl.querySelector('.wn-lore-graph-canvas')).toBe(restoredCanvas);
+
+			// 5. Delayed in-flight refresh from NovelA must be ignored after switching to NovelB
+			deferNextBuild = true;
+			workspaceHandlers['webnovel-workbench-lore-updated']?.forEach(cb => cb());
+			await vi.advanceTimersByTimeAsync(600);
+			expect(pendingBuildResolve).not.toBeNull();
+
+			view.setBookPath('NovelB');
+			await vi.advanceTimersByTimeAsync(0);
+			const novelBCanvas = view.contentEl.querySelector('.wn-lore-graph-canvas');
+			expect(novelBCanvas).not.toBeNull();
+
+			// Resolve stale NovelA refresh with empty data: must NOT wipe NovelB canvas
+			pendingBuildResolve!({ nodes: [], edges: [] });
+			await vi.advanceTimersByTimeAsync(0);
+			expect(view.contentEl.querySelector('.wn-lore-graph-canvas')).toBe(novelBCanvas);
+
+			await view.onClose();
+		} finally {
+			debounceManager.destroy();
+			MockElement.prototype.createDiv = originalCreateDiv;
+			MockElement.prototype.createEl = originalCreateEl;
+			(MockElement.prototype as unknown as { setCssStyles?: unknown }).setCssStyles = originalSetCssStyles;
+			(MockElement.prototype as unknown as { getBoundingClientRect?: unknown }).getBoundingClientRect = originalGetRect;
+			(MockElement.prototype as unknown as { getContext?: unknown }).getContext = originalGetContext;
+			(globalThis as unknown as { ResizeObserver?: unknown }).ResizeObserver = originalResizeObserver;
 			vi.useRealTimers();
 		}
 	});
@@ -3535,6 +3993,21 @@ describe('WorkbenchView', () => {
 			await p2;
 			await closePromise;
 			expect(closed).toBe(true);
+		});
+
+		it('keeps the top-right New Chapter action in timeline waterfall mode', async () => {
+			const view = new WorkbenchView(mockLeaf as unknown as import('obsidian').WorkspaceLeaf, plugin);
+			view.currentBookPath = 'NovelA';
+			(view as unknown as { container: unknown }).container = view.contentEl;
+			(view as unknown as { sortMode: string }).sortMode = 'timeline';
+			await (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
+
+			expect(view.contentEl.querySelector('.wn-corkboard-new-chapter-btn')?.textContent).toBe('corkboard.new-chapter');
+			expect(view.contentEl.querySelector('.wn-corkboard-new-timeline-event-btn')).toBeNull();
+
+			(view as unknown as { isTimelineTrajectoryMode: boolean }).isTimelineTrajectoryMode = true;
+			await (view as unknown as { renderBoard: () => Promise<void> }).renderBoard();
+			expect(view.contentEl.querySelector('.wn-corkboard-new-chapter-btn')).toBeNull();
 		});
 	});
 });

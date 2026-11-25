@@ -199,9 +199,9 @@ export class FileEventManager {
 			if (!this.plugin.cacheManager.isEligibleForTotalWordCount(file)) return;
 
 			const imm = this.plugin.immersiveModeManager;
-			const isMobileScoped = Boolean(imm?.isMobileDataIsolationActive?.() ?? imm?.isMobileImmersiveSessionActive?.());
+			const isMobileScoped = imm?.isMobileDataIsolationActive() ?? false;
 			const activeTrackedPath = isMobileScoped
-				? (imm?.getDataScopedMainFile?.() ?? imm?.getActiveSessionMainFile?.())?.path
+				? (imm?.getDataScopedMainFile())?.path
 				: this.plugin.app.workspace.getActiveFile()?.path;
 			const isActiveFile = file.path === activeTrackedPath;
 

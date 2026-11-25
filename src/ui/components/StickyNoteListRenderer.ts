@@ -311,7 +311,7 @@ export class StickyNoteListRenderer {
 	}
 
 	private createToolbar(): HTMLElement {
-		if (this.mode === 'immersive') {
+		if (this.mode === 'immersive' && !isMobile()) {
 			const hoverTrigger = this.container.createDiv({ cls: 'wn-immersive-sticky-trigger webnovel-immersive-hover-trigger' });
 			const toolbar = this.container.createDiv({ cls: 'wn-immersive-sticky-toolbar webnovel-immersive-toolbar' });
 

@@ -1,7 +1,7 @@
 import { showPluginNotice } from '../services/PluginNoticeService';
 import type { App, WorkspaceLeaf, TFile } from 'obsidian';
 import { setIcon } from 'obsidian';
-import { filterTimelineEntries, parseTimelineChapterList, type TimelineEntry, type TimelineItem, type TimelineManager } from '../services/TimelineManager';
+import { filterTimelineEntries, getTimelineEntryLocateCandidates, getTimelineNodeDisplayTime, parseTimelineChapterList, type TimelineEntry, type TimelineItem, type TimelineManager } from '../services/TimelineManager';
 import { CreativeView } from './CreativeView';
 import { rafThrottle } from '../utils/dom';
 import { t } from '../i18n';
@@ -434,7 +434,10 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 		}
 
 		// 时间点（标题 - 点击直接跳转到时间线文件对应条目）
-		const timeEl = content.createDiv({ cls: 'wn-timeline-time', text: entry.time });
+		const timeEl = content.createDiv({
+			cls: entry.timePending ? 'wn-timeline-time is-time-pending' : 'wn-timeline-time',
+			text: getTimelineNodeDisplayTime(entry)
+		});
 		timeEl.title = t('common.jump-to-entry');
 		timeEl.onclick = async (e) => {
 			e.stopPropagation();
@@ -450,7 +453,7 @@ export class TimelineView extends CreativeView<TimelineViewPlugin> {
 			await smartLocateAndHighlight(
 				this.app,
 				timelineFile,
-				[`## ${entry.time}`, `# ${entry.time}`, entry.time],
+				getTimelineEntryLocateCandidates(entry),
 				{ sourceLeaf: this.leaf, splitIfNew: true, fallbackLine, matchStartGlobal }
 			);
 		};

@@ -2640,6 +2640,32 @@ describe('TrajectoryBoardRenderer', () => {
 			expect(grid.style.transform).toBe('translate3d(39.5px, 9.5px, 0) scale(1)');
 			layout.dispatchEvent({ type: 'pointerup', pointerId: 1 });
 		});
+
+		it('renders each time-pending node in its own column while keeping named same-time grouping intact', () => {
+			const entries: TimelineEntry[] = [
+				{ time: 'Day 1', type: 'Plot', description: 'A', chapter: '', rawBlock: '', items: [{ description: 'A', chapter: '' }] },
+				{ time: 'Day 1', type: 'Sub', description: 'B', chapter: '', rawBlock: '', items: [{ description: 'B', chapter: '' }] },
+				{ time: '', timePending: true, nodeId: 'nd_1', type: 'Plot', description: 'Undated 1', chapter: '', rawBlock: '', items: [{ description: 'Undated 1', chapter: '' }] } as TimelineEntry,
+				{ time: '', timePending: true, nodeId: 'nd_2', type: 'Plot', description: 'Undated 2', chapter: '', rawBlock: '', items: [] } as TimelineEntry
+			];
+
+			renderTrajectoryMode({
+				app: mockApp,
+				container: container as unknown as HTMLElement,
+				displayEntries: entries,
+				allEntries: entries,
+				resolveLinkToFile
+			});
+
+			const grid = container.querySelector('.wn-trajectory-grid')!;
+			// 1 grouped column for Day 1 + 2 separate columns for the two time-pending nodes = 3 columns
+			expect(grid.style.gridTemplateColumns).toBe('max-content repeat(3, 14rem)');
+			const nodes = container.querySelectorAll('.wn-trajectory-node');
+			expect(nodes.map(n => n.textContent)).toEqual(['Day 1', 'timeline.time-pending', 'timeline.time-pending', 'Day 1']);
+			const plotCells = container.querySelectorAll('.wn-trajectory-cell.is-type');
+			expect(plotCells[1].style['--traj-col']).toBe('3');
+			expect(plotCells[2].style['--traj-col']).toBe('4');
+		});
 	});
 
 });

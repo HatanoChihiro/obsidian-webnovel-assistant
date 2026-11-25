@@ -2813,6 +2813,8 @@ describe('WritingStatusView work retention and context isolation', () => {
 			const immersivePlugin: WritingStatusViewPlugin = {
 				...mockPlugin,
 				immersiveModeManager: {
+					isMobileDataIsolationActive: () => false,
+					getDataScopedMainFile: () => null,
 					getMainEditorLeaf: vi.fn(() => mainLeaf)
 				}
 			};
@@ -2883,6 +2885,8 @@ describe('WritingStatusView work retention and context isolation', () => {
 			const immersivePlugin: WritingStatusViewPlugin = {
 				...mockPlugin,
 				immersiveModeManager: {
+					isMobileDataIsolationActive: () => false,
+					getDataScopedMainFile: () => null,
 					getMainEditorLeaf: vi.fn(() => currentMainLeaf)
 				}
 			};
@@ -2967,6 +2971,8 @@ describe('WritingStatusView work retention and context isolation', () => {
 				},
 				writingJourneyService: { changeChapterStatus },
 				immersiveModeManager: {
+					isMobileDataIsolationActive: () => false,
+					getDataScopedMainFile: () => null,
 					getMainEditorLeaf: vi.fn(() => ({ view: { getViewType: () => 'markdown', file: currentMainFile } }) as unknown as import('obsidian').WorkspaceLeaf)
 				}
 			};
@@ -3051,6 +3057,8 @@ describe('WritingStatusView work retention and context isolation', () => {
 				...mockPlugin,
 				writingJourneyService: { changeChapterStatus },
 				immersiveModeManager: {
+					isMobileDataIsolationActive: () => false,
+					getDataScopedMainFile: () => null,
 					getMainEditorLeaf: vi.fn(() => mainLeaf)
 				}
 			};
@@ -3153,6 +3161,8 @@ describe('WritingStatusView work retention and context isolation', () => {
 			const immersivePlugin: WritingStatusViewPlugin = {
 				...mockPlugin,
 				immersiveModeManager: {
+					isMobileDataIsolationActive: () => false,
+					getDataScopedMainFile: () => null,
 					getMainEditorLeaf: vi.fn(() => currentMainLeaf),
 					// Simulate stale savedActiveFile returned by manager if anyone wrongly called getMainEditorFile
 					getMainEditorFile: vi.fn(() => savedChapter as unknown as import('obsidian').TFile)
@@ -3248,6 +3258,8 @@ describe('WritingStatusView work retention and context isolation', () => {
 					get cacheVersion() { return charCacheVersion; }
 				} as unknown as WritingStatusViewPlugin['characterManager'],
 				immersiveModeManager: {
+					isMobileDataIsolationActive: () => false,
+					getDataScopedMainFile: () => null,
 					getMainEditorLeaf: vi.fn(() => mainLeaf),
 					getMainEditorFile: vi.fn(() => chapter as unknown as import('obsidian').TFile)
 				} as unknown as WritingStatusViewPlugin['immersiveModeManager']

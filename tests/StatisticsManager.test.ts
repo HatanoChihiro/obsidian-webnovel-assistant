@@ -372,9 +372,9 @@ describe('StatisticsManager', () => {
             mockPlugin.app.workspace.getActiveViewOfType.mockReturnValue(refViewSamePath);
             mockPlugin.calculateAccurateWords = vi.fn((text: string) => text.length);
             mockPlugin.immersiveModeManager = {
-                isMobileImmersiveSessionActive: () => true,
-                getActiveSessionMainView: () => mainView,
-                getActiveSessionMainFile: () => mainFile
+                isMobileDataIsolationActive: () => true,
+                getDataScopedMainView: () => mainView,
+                getDataScopedMainFile: () => mainFile
             };
 
             const manager = new StatisticsManager(mockPlugin);

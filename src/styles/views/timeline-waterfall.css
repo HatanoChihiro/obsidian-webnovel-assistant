@@ -56,8 +56,7 @@
 }
 
 
-.wn-timeline-node-title::before {
-	content: '';
+.wn-timeline-node-handle {
 	position: absolute;
 	left: -2px;
 	/* Align perfectly with the vertical line */
@@ -66,6 +65,103 @@
 	border-radius: 50%;
 	background: var(--interactive-accent);
 	border: 2px solid var(--background-primary);
+	box-sizing: content-box;
+}
+
+body:is(.is-phone, .is-tablet) .wn-timeline-node-handle {
+	left: -3px;
+	width: 12px;
+	height: 12px;
+}
+
+.wn-timeline-node-handle.is-sortable {
+	cursor: grab;
+	touch-action: none;
+}
+
+.wn-timeline-node-handle.is-sortable::after {
+	content: '';
+	position: absolute;
+	inset: -6px;
+}
+
+.wn-timeline-node-handle.is-sortable:active {
+	cursor: grabbing;
+}
+
+.wn-timeline-waterfall-layout.is-node-sorting .wn-timeline-waterfall-main {
+	overflow-anchor: none;
+	scroll-behavior: auto;
+}
+
+.wn-timeline-waterfall-layout.is-node-sorting .wn-timeline-waterfall-main::before,
+.wn-timeline-waterfall-layout.is-node-sorting .wn-timeline-waterfall-main::after {
+	content: '';
+	flex: 0 0 var(--wn-timeline-node-sort-buffer, 0px);
+	pointer-events: none;
+}
+
+.wn-timeline-waterfall-layout.is-node-sorting .wn-timeline-item-row,
+.wn-timeline-waterfall-layout.is-node-sorting .wn-timeline-empty-node-dropzone,
+.wn-timeline-waterfall-layout.is-node-sorting .wn-timeline-sub-gap,
+.wn-timeline-waterfall-layout.is-node-sorting .wn-timeline-gap .wn-timeline-cards-container,
+.wn-timeline-waterfall-layout.is-node-sorting .wn-timeline-svg-layer,
+.wn-timeline-waterfall-layout.is-node-sorting .wn-timeline-svg-layer-fg {
+	display: none;
+}
+
+body:is(.is-phone, .is-tablet) .wn-timeline-waterfall-layout.is-node-sorting .wn-timeline-waterfall-sidebar {
+	display: none;
+}
+
+.wn-timeline-waterfall-layout.is-node-sorting .wn-timeline-node {
+	margin-bottom: 4px;
+}
+
+.wn-timeline-waterfall-layout.is-node-sorting .wn-timeline-node-title {
+	margin-bottom: 0;
+	padding-top: 4px;
+	padding-bottom: 4px;
+	border-radius: var(--radius-s, 4px);
+}
+
+.wn-timeline-waterfall-layout.is-node-sorting .wn-timeline-gap {
+	padding: 4px 0;
+	min-height: 12px;
+}
+
+.wn-timeline-node.is-node-dragging {
+	opacity: 0.45;
+}
+
+.wn-timeline-node.drag-over-node-top::before {
+	content: '';
+	position: absolute;
+	top: -2px;
+	left: 0;
+	right: 0;
+	height: 0;
+	border-top: 2px dashed var(--interactive-accent);
+	z-index: 10;
+	pointer-events: none;
+}
+
+.wn-timeline-node.drag-over-node-bottom::after {
+	content: '';
+	position: absolute;
+	bottom: -2px;
+	left: 0;
+	right: 0;
+	height: 0;
+	border-bottom: 2px dashed var(--interactive-accent);
+	z-index: 10;
+	pointer-events: none;
+}
+
+.wn-timeline-gap.drag-over-node,
+.wn-timeline-node-slot.drag-over-node {
+	border-top: 2px dashed var(--interactive-accent);
+	background: transparent;
 }
 
 .wn-timeline-node-time-text {
@@ -73,9 +169,113 @@
 	transition: color 0.15s ease;
 }
 
+.wn-timeline-node-time-text.is-time-pending {
+	color: var(--text-muted);
+	font-style: italic;
+}
+
 .wn-timeline-node-time-text:hover {
 	color: var(--interactive-accent);
 	text-decoration: underline;
+}
+
+.wn-timeline-node-title.drag-over-event {
+	background: color-mix(in srgb, var(--interactive-accent) 12%, transparent);
+	border-radius: var(--radius-s, 4px);
+}
+
+.wn-timeline-empty-node-dropzone {
+	margin-left: 16px;
+	margin-bottom: 10px;
+	padding: 14px 16px;
+	border: 1px dashed var(--background-modifier-border);
+	border-radius: 6px;
+	color: var(--text-faint);
+	font-size: 0.85em;
+	font-family: var(--font-interface);
+	transition: border-color 0.2s, background-color 0.2s, color 0.2s;
+}
+
+.wn-timeline-empty-node-dropzone.drag-over-event,
+.wn-timeline-empty-node-dropzone.drag-over-chapter {
+	border-color: var(--interactive-accent);
+	background: color-mix(in srgb, var(--interactive-accent) 10%, var(--background-secondary));
+	color: var(--text-normal);
+}
+
+.wn-timeline-node-slot {
+	position: relative;
+	min-height: 14px;
+	margin-left: 16px;
+	margin-bottom: 6px;
+	border-radius: 4px;
+	transition: background-color 0.2s, border-color 0.2s, min-height 0.15s;
+	flex-shrink: 0;
+}
+
+.wn-timeline-node-slot.drag-over-event {
+	min-height: 28px;
+	background: color-mix(in srgb, var(--interactive-accent) 12%, transparent);
+	border: 1px dashed var(--interactive-accent);
+}
+
+.wn-timeline-inline-node-form {
+	margin: 8px 0 12px 0;
+	padding: 10px 12px;
+	border-radius: 6px;
+	border: 1px solid var(--interactive-accent);
+	background: var(--background-secondary);
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	width: 100%;
+	box-sizing: border-box;
+	font-family: var(--font-interface);
+}
+
+.wn-timeline-inline-node-preview {
+	display: flex;
+	align-items: baseline;
+	gap: 6px;
+	font-size: 0.85em;
+	color: var(--text-muted);
+	min-width: 0;
+}
+
+.wn-timeline-inline-node-preview-label {
+	font-weight: 600;
+	color: var(--text-normal);
+	flex-shrink: 0;
+}
+
+.wn-timeline-inline-node-preview-text {
+	font-family: var(--font-text);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.wn-timeline-inline-node-fields {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+}
+
+.wn-timeline-inline-time-input {
+	flex: 1 1 160px;
+	min-width: 120px;
+}
+
+.wn-timeline-inline-type-select {
+	flex: 0 1 140px;
+	min-width: 100px;
+}
+
+.wn-timeline-inline-node-actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: 6px;
 }
 
 .wn-timeline-node-edit-btn {
@@ -141,7 +341,7 @@
 	overflow-y: auto;
 	scrollbar-gutter: stable;
 	flex-shrink: 0;
-	padding: 8px 20px calc(8px + 1.5em) 10px;
+	padding: 8px var(--wn-timeline-item-action-space, 20px) calc(8px + 1.5em) 10px;
 	scroll-padding-bottom: calc(8px + 1.5em);
 	background: color-mix(in srgb, var(--interactive-accent) 10%, var(--background-secondary-alt));
 	border: 1px solid color-mix(in srgb, var(--interactive-accent) 25%, var(--background-modifier-border));
@@ -217,17 +417,18 @@
 }
 
 
-.wn-timeline-item-row:hover .wn-timeline-item-delete-btn {
+.wn-timeline-item-row:hover .wn-timeline-item-delete-btn,
+.wn-timeline-pending-card:is(:hover, :focus-within) .wn-timeline-item-delete-btn {
 	opacity: 0.6;
 }
 
 
-.wn-timeline-item-row:hover .wn-timeline-item-delete-btn:hover {
+.wn-timeline-item-row:hover .wn-timeline-item-delete-btn:hover,
+.wn-timeline-pending-card .wn-timeline-item-delete-btn:is(:hover, :focus-visible) {
 	opacity: 1;
 	background-color: var(--background-modifier-hover);
 	color: var(--text-error);
 }
-
 
 .wn-timeline-type-badge {
 	font-size: 0.8em;
@@ -314,27 +515,29 @@
 	-webkit-backdrop-filter: blur(8px);
 	border: 1px dashed var(--background-modifier-border);
 	border-radius: 8px;
-	padding: 15px;
+	padding: 12px;
 	display: flex;
 	flex-direction: column;
-	overflow-y: auto;
-	opacity: 0.85;
+	overflow: hidden;
+	opacity: 0.92;
 	transition: opacity 0.2s, background 0.2s, border-color 0.2s;
 	position: relative;
 	top: 0;
 	align-self: stretch;
 	max-height: 100%;
+	box-sizing: border-box;
 }
 
 
-.wn-timeline-waterfall-sidebar:hover {
+.wn-timeline-waterfall-sidebar:hover,
+.wn-timeline-waterfall-sidebar:focus-within {
 	opacity: 1;
-	background: color-mix(in srgb, var(--background-primary) 85%, transparent);
+	background: color-mix(in srgb, var(--background-primary) 88%, transparent);
 }
 
 
 .wn-timeline-waterfall-sidebar .wn-corkboard-card {
-	opacity: 0.85;
+	opacity: 0.9;
 	transition: opacity 0.2s, background 0.2s;
 }
 
@@ -346,7 +549,8 @@
 
 /* 侧边栏拖拽高亮 */
 body .wn-timeline-waterfall-layout .wn-timeline-waterfall-sidebar.drag-over,
-body .wn-timeline-waterfall-layout .wn-timeline-waterfall-sidebar.drag-over-chapter {
+body .wn-timeline-waterfall-layout .wn-timeline-waterfall-sidebar.drag-over-chapter,
+body .wn-timeline-waterfall-layout .wn-timeline-waterfall-sidebar.drag-over-event {
 	background: color-mix(in srgb, var(--interactive-accent) 15%, var(--background-primary));
 	border-color: var(--interactive-accent);
 	border-style: dashed;
@@ -355,30 +559,179 @@ body .wn-timeline-waterfall-layout .wn-timeline-waterfall-sidebar.drag-over-chap
 }
 
 
-/* 紧凑归还槽保留在看板布局内，避免覆盖主栏滚动条。 */
-.wn-timeline-waterfall-sidebar.is-empty {
-	width: 40px;
-	padding: 0;
-	background: transparent;
-	border-left: 2px dashed transparent;
-	z-index: 100;
+.wn-timeline-sidebar-panes {
+	display: grid;
+	grid-template-rows: repeat(2, minmax(0, 1fr));
+	flex: 1 1 0;
+	min-height: 0;
+	gap: 10px;
 	overflow: hidden;
+}
+
+
+.wn-timeline-sidebar-pane {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+	min-height: 0;
+	overflow: hidden;
+}
+
+
+.wn-timeline-unscheduled-pane {
+	border-top: 1px solid color-mix(in srgb, var(--background-modifier-border) 55%, transparent);
+	padding-top: 8px;
+}
+
+
+.wn-timeline-waterfall-sidebar.is-unscheduled-empty .wn-timeline-unscheduled-pane {
+	display: none;
+}
+
+
+.wn-timeline-waterfall-sidebar.is-unscheduled-empty .wn-timeline-sidebar-panes {
+	grid-template-columns: minmax(0, 1fr);
+	grid-template-rows: minmax(0, 1fr);
+}
+
+body:not(.is-phone, .is-tablet) .wn-timeline-waterfall-sidebar.is-pending-empty:not(.is-unscheduled-empty) .wn-timeline-sidebar-panes {
+	grid-template-rows: auto minmax(0, 1fr);
+}
+
+.wn-timeline-pending-quick-add {
+	display: flex;
+	align-items: stretch;
+	gap: 6px;
+	flex-shrink: 0;
+	margin-bottom: 8px;
+}
+
+.wn-timeline-waterfall-sidebar.is-pending-empty .wn-timeline-pending-quick-add {
+	margin: 0;
+}
+
+.wn-timeline-pending-quick-input {
+	flex: 1 1 0;
+	min-width: 0;
+	padding: 6px 8px;
+	border-radius: var(--radius-s, 4px);
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-primary);
+	color: var(--text-normal);
+	font-size: 0.85em;
+	font-family: var(--font-text);
+	box-sizing: border-box;
+}
+
+.wn-timeline-pending-quick-add > button.wn-timeline-pending-quick-button {
+	flex-shrink: 0;
 	height: auto;
-	align-self: auto;
-	max-height: none;
+	padding: 0 8px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s, 4px);
+	background: var(--interactive-normal);
+	color: var(--text-normal);
+	box-shadow: none;
+	font-family: var(--font-interface);
+	white-space: nowrap;
+}
+
+.wn-timeline-pending-quick-add > button.wn-timeline-pending-quick-button:hover:enabled {
+	background: var(--interactive-hover);
 }
 
 
-.wn-timeline-waterfall-sidebar.is-empty.drag-over,
-.wn-timeline-waterfall-sidebar.is-empty.drag-over-chapter {
+.wn-timeline-pending-quick-input:focus {
+	border-color: var(--interactive-accent);
+	outline: none;
+	box-shadow: 0 0 0 1px var(--interactive-accent);
+}
+
+
+.wn-timeline-pending-list,
+.wn-timeline-unscheduled-list {
+	flex: 1 1 0;
+	min-height: 0;
+	overflow-y: auto;
+	overflow-x: hidden;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	padding-right: 2px;
+}
+
+
+.wn-timeline-unscheduled-list .wn-corkboard-grid {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	padding-bottom: 12px;
+}
+
+
+.wn-timeline-pending-card {
+	--wn-timeline-item-action-space: 32px;
+
+	display: grid;
+	flex: 0 0 auto;
+	min-width: 0;
+	position: relative;
+	cursor: grab;
+}
+
+
+.wn-timeline-pending-card.is-dragging {
+	opacity: 0.45;
+}
+
+
+.wn-timeline-pending-card .wn-timeline-item-desc {
+	grid-area: 1 / 1;
+	position: relative;
+	height: auto;
+	min-height: 3.25em;
+	padding-bottom: 8px;
+	overflow: visible;
+	overflow-wrap: anywhere;
+	scrollbar-gutter: auto;
+}
+
+
+.wn-timeline-pending-card > .wn-timeline-item-actions {
+	/* Share the description row so the buttons contribute to the card height. */
+	grid-area: 1 / 1;
+	position: static;
+	align-self: start;
+	justify-self: end;
+	margin: 3px 4px;
+}
+
+
+.wn-timeline-pending-card .wn-timeline-item-delete-btn {
+	height: auto;
+	box-shadow: none;
+}
+
+
+.wn-timeline-pending-card-chapters {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+}
+
+
+.wn-timeline-pending-chapter-pill {
+	font-family: var(--font-interface);
+	font-size: 0.75em;
+	padding: 1px 5px;
+	border-radius: var(--radius-s, 4px);
 	background: var(--background-modifier-hover);
-	border-left-color: var(--interactive-accent);
+	color: var(--text-muted);
 }
 
 
-/* 桌面端未关联侧边栏折叠态与展开手柄 */
-body:not(.is-phone) .wn-timeline-waterfall-sidebar.is-collapsed,
-body:not(.is-phone) .wn-timeline-waterfall-sidebar.is-collapsed.is-empty {
+/* 桌面和平板的侧边栏折叠态与展开手柄 */
+body:not(.is-phone) .wn-timeline-waterfall-sidebar.is-collapsed {
 	width: 32px;
 	padding: 0;
 	background: transparent;
@@ -391,14 +744,14 @@ body:not(.is-phone) .wn-timeline-waterfall-sidebar.is-collapsed.is-empty {
 }
 
 
-body:not(.is-phone) .wn-timeline-waterfall-sidebar.is-collapsed .wn-timeline-sidebar-header,
-body:not(.is-phone) .wn-timeline-waterfall-sidebar.is-collapsed .wn-corkboard-grid {
+.wn-timeline-waterfall-sidebar.is-collapsed .wn-timeline-sidebar-panes {
 	display: none;
 }
 
 
 body:not(.is-phone) .wn-timeline-waterfall-sidebar.is-collapsed.drag-over,
-body:not(.is-phone) .wn-timeline-waterfall-sidebar.is-collapsed.drag-over-chapter {
+body:not(.is-phone) .wn-timeline-waterfall-sidebar.is-collapsed.drag-over-chapter,
+body:not(.is-phone) .wn-timeline-waterfall-sidebar.is-collapsed.drag-over-event {
 	background: color-mix(in srgb, var(--interactive-accent) 15%, var(--background-primary));
 	border-left: 2px dashed var(--interactive-accent);
 }
@@ -409,8 +762,7 @@ body:not(.is-phone) .wn-timeline-waterfall-sidebar.is-collapsed.drag-over-chapte
 }
 
 
-body:not(.is-phone) .wn-timeline-waterfall-sidebar.is-collapsed .wn-timeline-sidebar-expand-handle,
-body:not(.is-phone) .wn-timeline-waterfall-sidebar.is-collapsed.is-empty .wn-timeline-sidebar-expand-handle {
+body:not(.is-phone) .wn-timeline-waterfall-sidebar.is-collapsed .wn-timeline-sidebar-expand-handle {
 	display: flex;
 	align-items: center;
 	justify-content: flex-start;
@@ -433,8 +785,7 @@ body:not(.is-phone) .wn-timeline-waterfall-sidebar.is-collapsed.is-empty .wn-tim
 }
 
 
-body:not(.is-phone) .wn-timeline-waterfall-sidebar.is-collapsed .wn-timeline-sidebar-expand-handle:hover,
-body:not(.is-phone) .wn-timeline-waterfall-sidebar.is-collapsed.is-empty .wn-timeline-sidebar-expand-handle:hover {
+body:not(.is-phone) .wn-timeline-waterfall-sidebar.is-collapsed .wn-timeline-sidebar-expand-handle:hover {
 	color: var(--text-normal);
 	background: var(--background-modifier-hover);
 }
@@ -453,18 +804,12 @@ body:not(.is-phone) .wn-timeline-waterfall-sidebar.is-collapsed .wn-timeline-sid
 	gap: 6px;
 	font-weight: 600;
 	font-size: 0.85em;
+	font-family: var(--font-interface);
 	margin-bottom: 8px;
 	color: var(--text-muted);
-	line-height: 1;
-	position: sticky;
-	top: -15px;
-	z-index: 10;
-	background: color-mix(in srgb, var(--background-primary) 92%, transparent);
-	backdrop-filter: blur(8px);
-	-webkit-backdrop-filter: blur(8px);
-	padding-top: 10px;
+	line-height: 1.2;
+	flex-shrink: 0;
 	padding-bottom: 6px;
-	margin-top: -15px;
 	border-bottom: 1px solid color-mix(in srgb, var(--background-modifier-border) 40%, transparent);
 }
 
@@ -475,16 +820,63 @@ body:not(.is-phone) .wn-timeline-waterfall-sidebar.is-collapsed .wn-timeline-sid
 	gap: 6px;
 }
 
-
-.wn-timeline-sidebar-icon {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
+body:is(.is-phone, .is-tablet) .wn-timeline-waterfall-sidebar {
+	--wn-timeline-sidebar-control-height: 24px;
+	--wn-timeline-sidebar-control-gap: 6px;
 }
 
+body.is-tablet .wn-timeline-waterfall-sidebar {
+	--wn-timeline-sidebar-control-height: 22px;
+}
 
-.wn-timeline-sidebar-icon svg {
-	display: block;
+body.is-tablet .wn-timeline-waterfall-sidebar:not(.is-collapsed) {
+	width: clamp(360px, 42%, 460px);
+	max-width: 55%;
+}
+
+body:is(.is-phone, .is-tablet) .wn-timeline-sidebar-panes {
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	grid-template-rows: minmax(0, 1fr);
+	gap: 8px;
+}
+
+body:is(.is-phone, .is-tablet) .wn-timeline-unscheduled-pane {
+	border-top: 0;
+	border-inline-start: 1px solid var(--background-modifier-border);
+	padding-top: 0;
+	padding-inline-start: 8px;
+}
+
+body:is(.is-phone, .is-tablet) .wn-timeline-sidebar-header {
+	block-size: 24px;
+	box-sizing: border-box;
+}
+
+body:is(.is-phone, .is-tablet) .wn-timeline-waterfall-sidebar .wn-timeline-pending-quick-add {
+	margin-bottom: var(--wn-timeline-sidebar-control-gap);
+}
+
+body:is(.is-phone, .is-tablet) .wn-timeline-unscheduled-list:not(.is-volume-first) {
+	margin-top: calc(var(--wn-timeline-sidebar-control-height) + var(--wn-timeline-sidebar-control-gap));
+}
+
+body:is(.is-phone, .is-tablet) .wn-timeline-unscheduled-list > .wn-corkboard-grid > .wn-corkboard-volume-header:first-child {
+	margin-top: 0;
+}
+
+body:is(.is-phone, .is-tablet) .wn-timeline-pending-quick-input,
+body:is(.is-phone, .is-tablet) .wn-timeline-pending-quick-add > button.wn-timeline-pending-quick-button {
+	box-sizing: border-box;
+	height: var(--wn-timeline-sidebar-control-height);
+	min-height: 0;
+	padding-block: 0;
+	border-radius: 3px;
+}
+
+body.is-tablet .wn-timeline-pending-quick-input,
+body.is-tablet .wn-timeline-pending-quick-add > button.wn-timeline-pending-quick-button {
+	padding-inline: 6px;
+	font-size: 0.8em;
 }
 
 
@@ -505,6 +897,12 @@ body:not(.is-phone) .wn-timeline-waterfall-sidebar.is-collapsed .wn-timeline-sid
 	background: var(--background-modifier-hover);
 }
 
+
+.wn-timeline-sidebar-collapse-btn:focus-visible,
+.wn-timeline-sidebar-expand-handle:focus-visible {
+	outline: 1px solid var(--interactive-accent);
+	outline-offset: -2px;
+}
 
 .wn-timeline-sidebar-collapse-btn svg {
 	display: block;
@@ -544,36 +942,6 @@ body:not(.is-phone) .wn-timeline-waterfall-sidebar.is-collapsed .wn-timeline-sid
 
 
 /* Timeline Add Buttons */
-.wn-timeline-add-sub-event-row {
-	display: flex;
-	justify-content: flex-start;
-	margin-bottom: 10px;
-	padding-left: 16px;
-}
-
-
-.wn-timeline-add-sub-event-btn {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	background: transparent;
-	border: 1px dashed var(--interactive-accent);
-	padding: 4px 12px;
-	border-radius: 4px;
-	color: var(--interactive-accent);
-	font-size: 0.8em;
-	cursor: pointer;
-	transition: all 0.2s;
-	box-shadow: none;
-}
-
-
-.wn-timeline-add-sub-event-btn:hover {
-	background: var(--interactive-accent);
-	color: var(--text-on-accent);
-}
-
-
 .wn-timeline-add-node-row {
 	margin-top: 20px;
 	display: flex;
@@ -614,6 +982,14 @@ body:not(.is-phone) .wn-timeline-waterfall-sidebar.is-collapsed .wn-timeline-sid
 	text-align: center;
 	padding: 40px 20px;
 	font-style: italic;
+	border-radius: 8px;
+	transition: background-color 0.2s, border-color 0.2s;
+}
+
+.wn-timeline-empty-msg.drag-over-event {
+	border: 2px dashed var(--interactive-accent);
+	background: color-mix(in srgb, var(--interactive-accent) 10%, var(--background-secondary));
+	color: var(--text-normal);
 }
 
 

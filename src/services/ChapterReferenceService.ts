@@ -1,7 +1,7 @@
 import { TFile, TFolder, type App, type EventRef, type TAbstractFile } from 'obsidian';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
-import type { ChapterReferenceItem, ReferenceCluster } from '../types/reference';
-import type { TimelineEntry } from './TimelineManager';
+import type { ChapterReferenceItem, ForeshadowingReferenceTarget, ReferenceCluster } from '../types/reference';
+import { getTimelineNodeDisplayTime, type TimelineEntry } from './TimelineManager';
 import type { ParsedForeshadowingEntry } from '../types/foreshadowing';
 import { findBookRoot, getCandidateNames } from '../utils/path';
 import { getDefaultFileName } from '../i18n/data-keys';
@@ -327,6 +327,14 @@ export class ChapterReferenceService {
 		}
 		this.emitRefresh();
 	}
+	private invalidateBookForSource(file: TFile): void {
+		const affected = new Set<string>();
+		this.invalidateSourceCache(file.path);
+		const bookRoot = findBookRoot(this.app, this.plugin, file, true);
+		const parentPath = file.parent?.path || '';
+		this.collectBookAffectedPaths(bookRoot, parentPath, affected);
+		this.applyScopedInvalidation(affected);
+	}
 	private handleVaultEvent(kind: 'modify' | 'create' | 'delete' | 'rename', file?: TAbstractFile, oldPath?: string): void {
 		if (this.destroyed) return;
 		if (!file) {
@@ -338,11 +346,7 @@ export class ChapterReferenceService {
 		if (kind === 'modify') {
 			if (!(file instanceof TFile)) return;
 			if (this.isSource(file)) {
-				this.invalidateSourceCache(file.path);
-				const bookRoot = findBookRoot(this.app, this.plugin, file, true);
-				const parentPath = file.parent?.path || '';
-				this.collectBookAffectedPaths(bookRoot, parentPath, affected);
-				this.applyScopedInvalidation(affected);
+				this.invalidateBookForSource(file);
 			}
 			return;
 		}
@@ -526,6 +530,34 @@ export class ChapterReferenceService {
 	private isCollectStale(file: TFile, path: string, generation: number, token: number): boolean {
 		return this.destroyed || generation !== this.generation || file.path !== path || this.pendingContexts.get(path)?.token !== token;
 	}
+	public async setReferenceImportance(item: ChapterReferenceItem, important: boolean): Promise<void> {
+		if (this.destroyed) {
+			throw new Error('ChapterReferenceService is destroyed');
+		}
+		if (item.type === 'timeline') {
+			const target = item.timelineTarget;
+			if (!target) {
+				throw new Error('Missing timeline reference target');
+			}
+			await this.plugin.timelineManager.setItemImportance(
+				target.itemIndex,
+				important,
+				target.folderPath,
+				target.expectedEntry,
+				{
+					file: item.sourceFile,
+					path: target.sourcePath
+				}
+			);
+		} else {
+			const target = item.foreshadowingTarget;
+			if (!target) {
+				throw new Error('Missing foreshadowing reference target');
+			}
+			await this.plugin.foreshadowingManager.setEntryImportance(item.sourceFile, important, target.sourcePath, target.rawBlock);
+		}
+		if (!this.destroyed) this.invalidateBookForSource(item.sourceFile);
+	}
 	private async collect(file: TFile, path: string, generation: number, token: number): Promise<ChapterReferenceItem[]> {
 		const { eligible, bookRoot } = this.isEligibleChapter(file);
 		const items: ChapterReferenceItem[] = [];
@@ -536,11 +568,27 @@ export class ChapterReferenceService {
 					const entries = await this.readSource(source, this.timelineCache, content => this.plugin.timelineManager.parseEntries(content, bookRoot));
 					if (this.isCollectStale(file, path, generation, token)) return [];
 					for (const [nodeIndex, node] of this.plugin.timelineManager.getTimelineNodesForChapter(file, entries, bookRoot, source).entries()) {
+						const sourceItems = node.entry.items;
+						let lastItemIndex = -1;
 						for (const [itemIndex, item] of node.items.entries()) {
+							let sourceItemIndex: number;
+							if (sourceItems && sourceItems.length > 0) {
+								sourceItemIndex = sourceItems.indexOf(item, lastItemIndex + 1);
+								if (sourceItemIndex === -1) sourceItemIndex = sourceItems.indexOf(item);
+								if (sourceItemIndex >= 0) lastItemIndex = sourceItemIndex;
+							} else {
+								sourceItemIndex = itemIndex;
+							}
 							if (!item.origin?.trim()) continue;
 							items.push({ id: 'timeline:' + source.path + ':' + nodeIndex + ':' + itemIndex, type: 'timeline', quote: item.origin.trim(),
-								description: item.description, time: node.time, eventType: node.type, important: item.important,
-								lores: node.lores, sourceFile: source, recordText: node.entry.rawBlock });
+								description: item.description, time: getTimelineNodeDisplayTime(node), eventType: node.type, important: Boolean(item.important),
+								lores: node.lores, sourceFile: source, recordText: node.entry.rawBlock,
+								timelineTarget: sourceItemIndex >= 0 ? {
+									folderPath: bookRoot,
+									sourcePath: source.path,
+									itemIndex: sourceItemIndex,
+									expectedEntry: node.entry
+								} : undefined });
 						}
 					}
 				}
@@ -552,17 +600,20 @@ export class ChapterReferenceService {
 					if (this.isCollectStale(file, path, generation, token)) return [];
 					const index = ChapterSorter.createReferenceIndex(this.app, this.plugin, bookRoot, { sourcePath: source.path });
 					for (const [entryIndex, entry] of entries.entries()) {
+						const foreshadowingTarget: ForeshadowingReferenceTarget | undefined = entry.rawBlock
+							? { sourcePath: source.path, rawBlock: entry.rawBlock }
+							: undefined;
 						for (const [contentIndex, content] of entry.contents.entries()) {
 							if (!content.text?.trim() || index.resolve(content.source || entry.sourceFile)?.path !== path) continue;
 							items.push({ id: 'foreshadowing:' + source.path + ':' + entryIndex + ':creation:' + contentIndex, type: 'foreshadowing', kind: 'creation',
 								quote: content.text.trim(), description: entry.description, time: content.time || entry.createdAt, status: entry.status,
-								tags: entry.tags, sourceFile: source, recordText: entry.rawBlock });
+								important: Boolean(entry.important), tags: entry.tags, sourceFile: source, recordText: entry.rawBlock, foreshadowingTarget });
 						}
 						for (const [logIndex, log] of (entry.recoveryLogs ?? []).entries()) {
 							if (!log.quote?.trim() || index.resolve(log.file)?.path !== path) continue;
 							items.push({ id: 'foreshadowing:' + source.path + ':' + entryIndex + ':recovery:' + logIndex, type: 'foreshadowing', kind: 'recovery',
-								quote: log.quote.trim(), description: entry.description, time: log.time, status: entry.status, tags: entry.tags,
-								stageType: log.stageType, note: log.note, sourceFile: source, recordText: entry.rawBlock });
+								quote: log.quote.trim(), description: entry.description, time: log.time, status: entry.status, important: Boolean(entry.important),
+								tags: entry.tags, stageType: log.stageType, note: log.note, sourceFile: source, recordText: entry.rawBlock, foreshadowingTarget });
 						}
 					}
 				}

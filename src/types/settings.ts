@@ -136,6 +136,18 @@ export interface ChapterNamingRule {
 /** 沉浸模式辅助区域 */
 export type ImmersiveAuxiliaryRegion = 'top' | 'bottom' | 'left' | 'right';
 
+/** 移动端沉浸数据栏与浮动统计小窗支持的数据项键名 */
+export type MobileDashboardStatKey =
+	| 'totalTime'
+	| 'focusTime'
+	| 'slackTime'
+	| 'chapterProgress'
+	| 'dailyProgress'
+	| 'taskProgress'
+	| 'sessionWords'
+	| 'sessionSpeed'
+	| 'currentTime';
+
 /** 移动端沉浸模式悬浮辅助面板支持的组件 ID（排除独立章节目录） */
 export type MobileImmersiveAuxViewType =
 	| 'immersive-chapter-status-view'
@@ -255,6 +267,8 @@ export interface ImmersiveModeSettings {
 	typewriterEnabled: boolean;
 	/** 是否显示顶部仪表盘中的打字机滚动控件 */
 	immersiveShowTypewriterControls: boolean;
+	/** 在桌面端沉浸顶栏显示原稿模式开关 */
+	immersiveShowManuscriptControl: boolean;
 	/** 打字机模式中心垂直偏移量 (%) (-30 到 30) */
 	typewriterCenterOffset: number;
 	/** 打字机模式未聚焦行淡化不透明度 (0.1 到 1.0) */
@@ -273,6 +287,12 @@ export interface ImmersiveModeSettings {
 	workManuscriptPositions?: Record<string, PersistedManuscriptPosition>;
 	/** 移动端沉浸模式悬浮辅助面板状态（独立于桌面端四区域布局） */
 	mobileAuxPanel?: MobileImmersiveAuxPanelState;
+	/** 移动端沉浸数据栏与浮动统计小窗共用的显示项（独立于桌面端） */
+	mobileDashboardItems?: MobileDashboardStatKey[];
+	/** 移动端沉浸模式：是否开启兼容左侧挖孔避让 */
+	mobileCutoutAvoidance?: boolean;
+	/** 移动端沉浸模式：左侧挖孔避让偏移量 (px) */
+	mobileCutoutLeftOffset?: number;
 }
 
 /** 普通编辑器打字机设置 */

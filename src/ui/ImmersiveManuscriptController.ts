@@ -64,10 +64,19 @@ interface ViewportAnchorSnapshot {
 	activeAnchorLine?: number;
 }
 
+type ClickAnchorMeasureResult =
+	| { status: 'invalid' }
+	| { status: 'unavailable' }
+	| { status: 'stable'; scrollTop: number; lineCenter: number }
+	| { status: 'adjust'; scrollTop: number; lineCenter: number; targetScrollTop: number };
+
 const MAX_CONCURRENT_PREVIEW_READS = 3;
 const MAX_CONTENT_OVERRIDES = 10;
 const MAX_OFFSCREEN_RENDERED_PREVIEWS = 12;
 const LAZY_OBSERVER_MARGIN = '600px 0px';
+const CLICK_ANCHOR_TOLERANCE_PX = 0.5;
+const CLICK_ANCHOR_REQUIRED_STABLE_PASSES = 2;
+const CLICK_ANCHOR_MAX_PASSES = 8;
 
 export function computeBodyStartLine(yamlHeader: string): number {
 	if (!yamlHeader) return 0;
@@ -112,6 +121,7 @@ export class ImmersiveManuscriptController {
 	private restoreCancelFn: (() => void) | null = null;
 	private pendingRestoreToken = 0;
 	private pendingRestoreViewportPath: string | null = null;
+	private readonly clickAnchorMeasureKey = {};
 	private refreshAfterComposeCleanup: (() => void) | null = null;
 
 	private domCleanups: Array<() => void> = [];
@@ -1326,7 +1336,7 @@ export class ImmersiveManuscriptController {
 				const cardEntry = this.cardsByPath.get(request.file.path);
 				const headPos = cm?.state?.selection?.main?.head;
 				const coords = (headPos !== undefined && cm?.coordsAtPos) ? cm.coordsAtPos(headPos) : null;
-				if (coords && (coords.bottom > coords.top || coords.top !== 0 || coords.bottom !== 0)) {
+				if (this.isValidCaretCoords(coords)) {
 					const lineCenter = (coords.top + coords.bottom) / 2;
 					this.scrollerEl.scrollTop = Math.max(0, this.scrollerEl.scrollTop + (lineCenter - request.clickAnchor.clientY));
 				} else if (scrollerRect && cardEntry?.cardEl) {
@@ -1337,6 +1347,16 @@ export class ImmersiveManuscriptController {
 			}
 			// 用户已完成切章定位，恢复打字机跟随，无需再次点击正文。
 			cm?.dispatch?.({ annotations: Transaction.userEvent.of('select') });
+			if (
+				this.scrollerEl &&
+				request.clickAnchor &&
+				Number.isFinite(request.clickAnchor.clientY) &&
+				cm &&
+				typeof cm.requestMeasure === 'function' &&
+				!this.isManuscriptTypewriterActive()
+			) {
+				this.scheduleClickAnchorStabilization(view, cm, request.file, request.clickAnchor.clientY);
+			}
 			return;
 		}
 
@@ -1354,6 +1374,249 @@ export class ImmersiveManuscriptController {
 		}
 
 		cm?.requestMeasure?.();
+	}
+
+	private isManuscriptTypewriterActive(): boolean {
+		return Boolean(this.scrollerEl?.classList?.contains('wn-manuscript-typewriter-active'));
+	}
+
+	private isValidCaretCoords(coords: { top: number; bottom: number } | null | undefined): coords is { top: number; bottom: number } {
+		return Boolean(
+			coords &&
+			Number.isFinite(coords.top) &&
+			Number.isFinite(coords.bottom) &&
+			(coords.bottom > coords.top || coords.top !== 0 || coords.bottom !== 0)
+		);
+	}
+
+	private scheduleClickAnchorStabilization(
+		view: MarkdownView,
+		cm: EditorView,
+		targetFile: TFile,
+		targetClientY: number
+	): void {
+		const scrollerEl = this.scrollerEl;
+		if (!scrollerEl || this.isDisposed || this.isScrollbarDragging || this.isManuscriptTypewriterActive()) {
+			return;
+		}
+
+		this.cancelPendingViewportRestore();
+
+		const token = ++this.pendingRestoreToken;
+		this.pendingRestoreViewportPath = null;
+		const generation = this.sessionGeneration;
+		const targetPath = targetFile.path;
+		const initialSelection = cm.state?.selection?.main;
+		const expectedHead = initialSelection?.head;
+		const expectedAnchor = initialSelection?.anchor;
+		const expectedEmpty = initialSelection?.empty;
+		const initialCursorRaw = view.editor?.getCursor?.();
+		const expectedCursor =
+			initialCursorRaw &&
+			Number.isFinite(initialCursorRaw.line) &&
+			Number.isFinite(initialCursorRaw.ch)
+				? { line: initialCursorRaw.line, ch: initialCursorRaw.ch }
+				: null;
+		const initialScrollTop = scrollerEl.scrollTop ?? 0;
+		const contentDom = cm.contentDOM ?? null;
+		const win = scrollerEl.ownerDocument?.defaultView ?? this.ownerWindowRef ?? window;
+
+		let cancelled = false;
+		let rafId: number | null = null;
+		let passes = 0;
+		let stablePasses = 0;
+		let didAdjust = false;
+		let scrollTopChanged = false;
+		let lastGeometry: { scrollTop: number; lineCenter: number } | null = null;
+
+		const cancelStabilization = () => {
+			if (cancelled) return;
+			cancelled = true;
+			if (rafId !== null) {
+				if (typeof win.cancelAnimationFrame === 'function') {
+					win.cancelAnimationFrame(rafId);
+				}
+				rafId = null;
+			}
+			if (this.pendingRestoreToken === token) {
+				this.pendingRestoreToken = 0;
+				this.pendingRestoreViewportPath = null;
+			}
+			if (this.restoreCancelFn === cancelStabilization) {
+				this.restoreCancelFn = null;
+			}
+			scrollerEl.removeEventListener?.('wheel', cancelStabilization);
+			scrollerEl.removeEventListener?.('touchmove', cancelStabilization);
+			scrollerEl.removeEventListener?.('pointerdown', cancelStabilization);
+			scrollerEl.removeEventListener?.('mousedown', cancelStabilization);
+			scrollerEl.removeEventListener?.('keydown', cancelStabilization);
+			if (contentDom && contentDom !== scrollerEl) {
+				contentDom.removeEventListener?.('keydown', cancelStabilization);
+				contentDom.removeEventListener?.('beforeinput', cancelStabilization);
+				contentDom.removeEventListener?.('compositionstart', cancelStabilization);
+				contentDom.removeEventListener?.('pointerdown', cancelStabilization);
+			}
+		};
+
+		const isStillValid = (measureView?: EditorView): boolean => {
+			if (cancelled) return false;
+			if (this.isDisposed || !this.isMounted()) return false;
+			if (this.sessionGeneration !== generation || this.pendingRestoreToken !== token) return false;
+			if (this.pendingSwitchRequest !== null || this.isScrollbarDragging) return false;
+			if (this.scrollerEl !== scrollerEl || this.activeFilePath !== targetPath) return false;
+			if (this.isManuscriptTypewriterActive()) return false;
+			const liveView = this.getMainMarkdownView();
+			if (!liveView || liveView !== view) return false;
+			if (liveView.file !== targetFile || liveView.file?.path !== targetPath) return false;
+			if (liveView.editor?.cm !== cm) return false;
+			if (measureView && measureView !== cm) return false;
+			const liveSelection = cm.state?.selection?.main;
+			if (expectedHead !== undefined && liveSelection?.head !== expectedHead) return false;
+			if (expectedAnchor !== undefined && liveSelection?.anchor !== expectedAnchor) return false;
+			if (expectedEmpty !== undefined && liveSelection?.empty !== expectedEmpty) return false;
+			if (expectedCursor) {
+				const liveCursor = liveView.editor?.getCursor?.();
+				if (!liveCursor || liveCursor.line !== expectedCursor.line || liveCursor.ch !== expectedCursor.ch) {
+					return false;
+				}
+			}
+			return true;
+		};
+
+		const finishStabilization = () => {
+			const shouldCapture = didAdjust || scrollTopChanged;
+			cancelStabilization();
+			if (shouldCapture && !this.isDisposed && this.isMounted()) {
+				if (typeof win.requestAnimationFrame === 'function') {
+					this.scheduleScrollPositionCapture();
+				}
+				this.scheduleDebouncedPersist();
+			}
+		};
+
+		const scheduleNextFrame = () => {
+			if (cancelled || passes >= CLICK_ANCHOR_MAX_PASSES) {
+				finishStabilization();
+				return;
+			}
+			if (typeof win.requestAnimationFrame !== 'function') {
+				finishStabilization();
+				return;
+			}
+			rafId = win.requestAnimationFrame(() => {
+				rafId = null;
+				if (!isStillValid()) {
+					cancelStabilization();
+					return;
+				}
+				queueMeasurePass();
+			});
+		};
+
+		const queueMeasurePass = () => {
+			if (!isStillValid()) {
+				cancelStabilization();
+				return;
+			}
+			cm.requestMeasure<ClickAnchorMeasureResult>({
+				key: this.clickAnchorMeasureKey,
+				read: (measureView: EditorView): ClickAnchorMeasureResult => {
+					if (!isStillValid(measureView)) {
+						return { status: 'invalid' };
+					}
+					const headPos = measureView.state?.selection?.main?.head;
+					const coords = (headPos !== undefined && typeof measureView.coordsAtPos === 'function')
+						? measureView.coordsAtPos(headPos)
+						: null;
+					if (!this.isValidCaretCoords(coords)) {
+						return { status: 'unavailable' };
+					}
+					const scrollTop = scrollerEl.scrollTop ?? 0;
+					const lineCenter = (coords.top + coords.bottom) / 2;
+					const delta = lineCenter - targetClientY;
+					let targetScrollTop = Math.max(0, scrollTop + delta);
+					const scrollHeight = scrollerEl.scrollHeight;
+					const clientHeight = scrollerEl.clientHeight;
+					if (
+						typeof scrollHeight === 'number' &&
+						Number.isFinite(scrollHeight) &&
+						scrollHeight > 0 &&
+						typeof clientHeight === 'number' &&
+						Number.isFinite(clientHeight) &&
+						clientHeight > 0 &&
+						scrollHeight >= clientHeight
+					) {
+						targetScrollTop = Math.min(scrollHeight - clientHeight, targetScrollTop);
+					}
+					if (Math.abs(targetScrollTop - scrollTop) > CLICK_ANCHOR_TOLERANCE_PX) {
+						return {
+							status: 'adjust',
+							scrollTop,
+							lineCenter,
+							targetScrollTop
+						};
+					}
+					return {
+						status: 'stable',
+						scrollTop,
+						lineCenter
+					};
+				},
+				write: (result: ClickAnchorMeasureResult, measureView: EditorView): void => {
+					if (result.status === 'invalid' || !isStillValid(measureView)) {
+						cancelStabilization();
+						return;
+					}
+					passes++;
+					if (result.status === 'unavailable') {
+						stablePasses = 0;
+						lastGeometry = null;
+						scheduleNextFrame();
+						return;
+					}
+					if (Math.abs(result.scrollTop - initialScrollTop) > CLICK_ANCHOR_TOLERANCE_PX) {
+						scrollTopChanged = true;
+					}
+					if (result.status === 'adjust') {
+						scrollerEl.scrollTop = result.targetScrollTop;
+						didAdjust = true;
+						scrollTopChanged = true;
+						stablePasses = 0;
+						lastGeometry = null;
+						scheduleNextFrame();
+						return;
+					}
+					const geometryChanged =
+						lastGeometry !== null &&
+						(
+							Math.abs(lastGeometry.scrollTop - result.scrollTop) > CLICK_ANCHOR_TOLERANCE_PX ||
+							Math.abs(lastGeometry.lineCenter - result.lineCenter) > CLICK_ANCHOR_TOLERANCE_PX
+						);
+					lastGeometry = { scrollTop: result.scrollTop, lineCenter: result.lineCenter };
+					stablePasses = geometryChanged ? 1 : stablePasses + 1;
+					if (stablePasses >= CLICK_ANCHOR_REQUIRED_STABLE_PASSES) {
+						finishStabilization();
+						return;
+					}
+					scheduleNextFrame();
+				}
+			});
+		};
+
+		this.restoreCancelFn = cancelStabilization;
+		scrollerEl.addEventListener('wheel', cancelStabilization, { passive: true });
+		scrollerEl.addEventListener('touchmove', cancelStabilization, { passive: true });
+		scrollerEl.addEventListener('pointerdown', cancelStabilization, { passive: true });
+		scrollerEl.addEventListener('mousedown', cancelStabilization, { passive: true });
+		scrollerEl.addEventListener('keydown', cancelStabilization, { passive: true });
+		if (contentDom && contentDom !== scrollerEl) {
+			contentDom.addEventListener?.('keydown', cancelStabilization, { passive: true });
+			contentDom.addEventListener?.('beforeinput', cancelStabilization, { passive: true });
+			contentDom.addEventListener?.('compositionstart', cancelStabilization, { passive: true });
+			contentDom.addEventListener?.('pointerdown', cancelStabilization, { passive: true });
+		}
+
+		queueMeasurePass();
 	}
 
 	private applyRestoredPosition(

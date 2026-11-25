@@ -174,6 +174,17 @@ describe('EditorTracker', () => {
 		expect(mockPlugin.refreshStatusViews).toHaveBeenCalled();
 	});
 
+	it('renders the startup status once when the chapter baseline is cached', async () => {
+		const file = new TFile('01.md', 'Fiction/01.md');
+		mockApp.workspace.getActiveViewOfType.mockReturnValue({ file, getViewData: () => 'fictional chapter' });
+		mockPlugin.cacheManager.isEligibleForWordCount.mockReturnValue(true);
+		mockPlugin.cacheManager.getFileCache.mockReturnValue(2);
+		const tracker = new EditorTracker(mockApp, mockPlugin);
+		await tracker.handleFileChange(true);
+		expect(mockPlugin.calculateAccurateWords).toHaveBeenCalledExactlyOnceWith('fictional chapter');
+		expect(mockApp.vault.cachedRead).not.toHaveBeenCalled();
+	});
+
 	describe('In-flight cachedRead race conditions & stale baseline invalidation', () => {
 		it('A=100 uncached, open B=1000 cached in same view, resolve A: B stays 1000 and next +1 records +1 (not +901)', async () => {
 			const fileA = new TFile('A.md', 'Novel/A.md');
@@ -562,10 +573,11 @@ describe('EditorTracker', () => {
 			mockPlugin.lastFileWords = 10;
 			mockPlugin.calculateAccurateWords.mockImplementation((text: string) => text.length);
 			mockPlugin.immersiveModeManager = {
-				isMobileImmersiveSessionActive: () => true,
+				isMobileDataIsolationActive: () => true,
 				getActiveSessionMainLeaf: () => mainLeaf,
-				getActiveSessionMainView: () => mainView,
-				getActiveSessionMainFile: () => mainFile,
+				getDataScopedMainView: () => mainView,
+				refreshMobileTopBar: vi.fn(),
+				getDataScopedMainFile: () => mainFile,
 				isMainEditorOrigin: (info: unknown, editor?: unknown) =>
 					info === mainView || editor === mainEditor || (info as { leaf?: unknown })?.leaf === mainLeaf
 			};
@@ -627,6 +639,7 @@ describe('EditorTracker', () => {
 				getActiveSessionMainFile: () => null,
 				getDataScopedMainLeaf: () => mainLeaf,
 				getDataScopedMainView: () => mainView,
+				refreshMobileTopBar: vi.fn(),
 				getDataScopedMainFile: () => mainFile,
 				isMainEditorOrigin: (info: unknown, editor?: unknown) =>
 					info === mainView || editor === mainEditor || (info as { leaf?: unknown })?.leaf === mainLeaf

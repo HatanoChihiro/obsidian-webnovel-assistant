@@ -505,6 +505,89 @@ describe('ForeshadowingManager', () => {
             expect(state2).toBe(false);
             expect(fileContent).not.toContain('<!-- wn-important -->');
         });
+
+        it('setEntryImportance patches exact record across duplicate descriptions and legacy format without rewriting unrelated metadata', async () => {
+            const manager = new ForeshadowingManager(mockApp, mockPlugin);
+            const fFile = Object.assign(new TFile(), { name: 'Foreshadowing.md', path: 'Book 1/Foreshadowing.md', basename: 'Foreshadowing', extension: 'md' });
+            mockApp.vault.getAbstractFileByPath.mockImplementation((path: string) => path === fFile.path ? fFile : null);
+
+            let fileContent = [
+                '## 同名伏笔',
+                '> [[Chapter 1]] - 2026-01-01 10:00',
+                '> 第一条原文',
+                '',
+                '**自定义**：KeepFirst',
+                '**状态**：未回收',
+                '',
+                '---',
+                '',
+                '## [[Chapter 2]] - 2026-01-02 10:00',
+                '> 第二条旧格式原文',
+                '',
+                '**说明**：同名伏笔',
+                '**自定义**：KeepSecond',
+                '**状态**：未回收',
+                '',
+                '---',
+                ''
+            ].join('\n');
+
+            mockApp.vault.process.mockImplementation(async (_file: TFile, callback: (data: string) => string) => {
+                fileContent = callback(fileContent);
+                return fileContent;
+            });
+
+            const initialEntries = manager.parseEntries(fileContent);
+            expect(initialEntries).toHaveLength(2);
+            expect(initialEntries[1].rawBlock).toContain('第二条旧格式原文');
+            const source = fileContent;
+            const rawBlock = initialEntries[1].rawBlock ?? '';
+
+            await manager.setEntryImportance(fFile, true, fFile.path, rawBlock);
+
+            let reparsed = manager.parseEntries(fileContent);
+            expect(reparsed[0].important).toBe(false);
+            expect(reparsed[1].important).toBe(true);
+            expect(fileContent).toContain('## [[Chapter 2]] - 2026-01-02 10:00\n<!-- wn-important -->');
+            expect(fileContent).toContain('**自定义**：KeepFirst');
+            expect(fileContent).toContain('**自定义**：KeepSecond');
+
+            // Repeated toggle using original snapshot unmarks cleanly
+            await manager.setEntryImportance(fFile, false, fFile.path, rawBlock);
+            reparsed = manager.parseEntries(fileContent);
+            expect(reparsed[1].important).toBe(false);
+            expect(fileContent).toBe(source);
+
+            // Deleting the target entry rejects instead of marking the first entry
+            const beforeDelete = fileContent;
+            fileContent = beforeDelete.slice(0, beforeDelete.indexOf('## [[Chapter 2]]'));
+            await expect(manager.setEntryImportance(fFile, true, fFile.path, rawBlock)).rejects.toThrow();
+            expect(manager.parseEntries(fileContent)[0].important).toBe(false);
+
+            // Ambiguous exact duplicate blocks fail closed without marking either block
+            const exactDuplicate = [
+                '## Exact Dup',
+                '> [[Chapter 1]] - 2026-01-01 10:00',
+                '> Same quote',
+                '',
+                '**状态**：未回收',
+                '',
+                '---',
+                '',
+                '## Exact Dup',
+                '> [[Chapter 1]] - 2026-01-01 10:00',
+                '> Same quote',
+                '',
+                '**状态**：未回收',
+                '',
+                '---',
+                ''
+            ].join('\n');
+            fileContent = exactDuplicate;
+            const dupEntries = manager.parseEntries(fileContent);
+            await expect(manager.setEntryImportance(fFile, true, fFile.path, dupEntries[0].rawBlock ?? '')).rejects.toThrow();
+            expect(fileContent).toBe(exactDuplicate);
+        });
     });
 
     describe('getExistingDescriptions and getExistingTags', () => {

@@ -91,7 +91,7 @@ Welcome to WebNovel Assistant! An Obsidian plugin designed specifically for web 
 2. Open an existing chapter, or right-click the first workspace folder to create or import a work. Existing works do not need to be imported again.
 3. View word counts in the desktop status bar. Run **Set Chapter Word Count Goal**, or use the file menu, to set a goal. **Show Status Bar Progress** is off by default and must be enabled to show goal progress there.
 4. Run **Toggle Writing Workbench View** to manage chapters and references. Enable typography, proofreading, ordinary-editor typewriter scrolling, the mobile widget, or immersive manuscript mode as needed.
-5. Use the search field at the top of plugin settings to find an option and jump to it. Phones and tablets do not show the **Immersive Mode** or **Data Output** tabs.
+5. Use the search field at the top of plugin settings to find an option and jump to it. On phones and tablets, immersive writing options are under **Immersive Mode**.
 
 ---
 
@@ -507,7 +507,7 @@ If word counts are displayed incorrectly:
 #### Related Settings
 - **Idle Timeout Threshold**: How many seconds without keyboard input count as slack time (default: 60 seconds)
 
-> **Mobile**: Focus timing is always available on phones and tablets. Enable **Show Floating Word Stats** to show its controls; no separate timer setting is needed. Control it with the floating widget's play/pause button or the status button beside Today's Status in the Writing Status Panel; screen-off and background time are filtered out, and data syncs with desktop.
+> **Mobile** – Focus timing is available by default on phones and tablets. Use the floating widget’s play/pause button or the button beside Today’s Status in the Writing Status Panel. The timer excludes screen-off and background time, and data syncs with desktop. At the top of **Settings → Immersive Mode**, you can enable **Show Focus Timer & Stats Floating Widget** and adjust **Precise Focus Judgment Threshold**.
 
 ---
 
@@ -573,7 +573,13 @@ Use the links after each panel title to jump to its detailed feature documentati
 - **Typewriter Scroll & Line Dimming**: Supports Typewriter Scroll and Context Line Dimming, toggleable via the central status bar for focused line writing.
 - **Slot-Based Layout**: Freely assign auxiliary panels to top, bottom, left, and right areas around the main editing zone. Unassigned panel areas collapse to edges to maximize editing area.
 - **Reference Documents (Desktop)**: Left-click an item in the immersive chapter list to open it in the main editor, or right-click to open it in the reference pane. Supporting documents such as Novel Info and Timeline remain in the list for reference access. Use the search icon at the top of a reference pane to find any Markdown file in the vault. Results show full paths to distinguish duplicate names. Selecting a file opens it in reading mode while preserving the main editor's file and selection.
-- **Reference Memory**: Changes are saved immediately and remembered separately for the work in the main editor. Reentering Immersive Mode restores that work's reference document. File and work-folder renames or moves update the records, and deleted files do not block restoration. Immersive Mode and reference panes are unavailable on phones and tablets.
+- **Reference Memory**: Changes are saved immediately and remembered separately for the work in the main editor. Reentering Immersive Mode restores that work's reference document. File and work-folder renames or moves update the records, and deleted files do not block restoration.
+
+#### Phones and Tablets
+
+- On supported devices, Immersive Mode hides the system status bar. Tap the exit button on the right of the top bar to restore it.
+- The top bar shares your selected stats with the floating widget in normal editing mode. Under **Settings → Immersive Mode → Top Dashboard Display Toggles**, you can select all nine stats. The immersive top bar uses slightly smaller text for stats than for the title. Both displays wrap when the next stat no longer fits, keeping each value on one line.
+- If a left camera cutout covers the work title, enable **Left punch-hole compatibility** in the top bar’s quick settings or in the plugin’s Immersive Mode settings. Then adjust **Left clearance offset** from 0 to 150 px.
 
 #### How to Use
 - **Entering Immersive Mode**: Open any novel chapter (Markdown file), and type `Toggle Full-Screen Immersive Writing Mode` in the command palette (Ctrl/Cmd + P), or click the left Ribbon icon in normal mode.
@@ -588,13 +594,13 @@ Use the links after each panel title to jump to its detailed feature documentati
 - **Top Dashboard Data Toggles**: Independently show or hide total time, focus time, slack time, chapter goal, daily goal, task goal, and session net words.
 - **Note Typography & Style**: Note font sizes and display styles are now centrally managed under **Writing Tools** settings.
 
-#### Manuscript Mode (4.1.0, Desktop)
+#### Manuscript Mode (4.1.0)
 
 1. Turn on **Enable manuscript mode** under **Settings → Immersive Mode** (off by default). Open a non-excluded Markdown chapter that matches a chapter naming rule or lies in a strict-mode exception directory, then enter Immersive Mode. Manuscript mode always requires chapter eligibility; disabling strict chapter mode does not make it include all ordinary documents.
 2. Chapters appear in the work's chapter order in one continuous view. The active chapter uses Obsidian's native editor; other chapters load previews as needed. Scrolling or dragging the scrollbar lets you read other chapters without automatically changing the editing target.
 3. Click a chapter title to edit from its start, or click a passage to continue at that position. You can also switch from the chapter list or run **Create Next Chapter (Smart Increment)**. The current chapter is saved before switching; a failed save cancels the switch and preserves edits.
 4. Cursor and reading positions are remembered per work and restored when returning. This view keeps chapter files separate. Read Novel Info, timelines, lore, and other supporting documents in the reference pane; opening a non-chapter in the main editor returns to an eligible chapter.
-5. Disable **Enable Manuscript Mode** to return to single-chapter immersive editing. This mode is unavailable on phones and tablets.
+5. Disable **Enable Manuscript Mode** to return to single-chapter immersive editing. On phones and tablets, you can toggle manuscript mode from the top bar’s quick settings.
 
 #### Chapter Status Auxiliary Panel (4.1.0, Desktop)
 
@@ -1241,11 +1247,11 @@ Select **Replay Mode** to browse loaded versions in save-time order. Play/pause,
 - **Mobile Exclusive**: Displays floating word count and focus timer window on mobile devices.
 - **Real-Time Updates**: Automatically updates word count and target percentage while editing; enabling the focus timer also displays elapsed focus time and session writing speed.
 - **Edge Docking & Auto-Collapse**: Dragging to left/right screen edges (≤35px) automatically collapses the widget into a subtle semi-transparent handle (opacity 0.35) without obstructing typing; click or hover expands it back.
-- **Settings Customization**: Adjust the **Focus Sensitivity Threshold** slider in mobile settings to control idle timeout detection.
+- **Settings Customization**: Adjust the **Precise Focus Judgment Threshold** slider at the top of **Settings → Immersive Mode** on mobile to control idle timeout detection.
 
 #### How to Use
-1. Open plugin settings → Enable **Show Floating Word Stats**. The widget includes focus timing by default; no separate timer setting is needed.
-2. The widget displays current word count, chapter goal, completion percentage, and focus timing. Use the play/pause button to control focus duration.
+1. Open **Plugin Settings → Immersive Mode**, enable **Show Focus Timer & Stats Floating Widget** at the very top, and select any of the nine stats under "Top Dashboard Display Toggles". The immersive data bar and floating widget share this selection.
+2. The widget keeps the play/pause button on the left to control focus timing and shows the selected values on the right. Background colors distinguish Total, Focus, and Slack times. Stats wrap when the next value no longer fits, keeping each value on one line.
 3. Drag to left or right screen edge to trigger edge docking collapse.
 
 > **Tip**: After enabling the floating window, status bar word count is automatically hidden to avoid duplicate display. The focus timer filters out screen-off and background time, and data syncs with desktop.

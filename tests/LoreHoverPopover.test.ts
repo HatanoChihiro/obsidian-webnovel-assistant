@@ -5,6 +5,7 @@ const openEditModalMock = vi.hoisted(() => vi.fn());
 
 vi.mock('obsidian', () => ({
 	Platform: { isMobile: false },
+	setIcon: vi.fn(),
 	Component: class {
 		private loaded = false;
 
@@ -17,6 +18,8 @@ vi.mock('obsidian', () => ({
 			this.loaded = false;
 			this.onunload();
 		}
+
+		registerDomEvent(): void {}
 
 		onunload(): void {}
 	}
@@ -45,6 +48,11 @@ vi.mock('../src/ui/LoreEditModal', () => ({
 }));
 
 import { LoreHoverPopover } from '../src/ui/LoreHoverPopover';
+import { ChapterReferencePopover } from '../src/ui/ChapterReferencePopover';
+import { ForeshadowingStatus } from '../src/types/foreshadowing';
+import type { ChapterReferenceItem } from '../src/types/reference';
+import type { App, TFile } from 'obsidian';
+import { MockElement } from './mocks/MockElement';
 
 interface MockElementState {
 	connected: boolean;
@@ -536,5 +544,155 @@ describe('LoreHoverPopover lifecycle', () => {
 		expect(popover.isActive()).toBe(false);
 		expect(onDispose).toHaveBeenCalledOnce();
 		expect(vi.getTimerCount()).toBe(0);
+	});
+});
+
+describe('ChapterReferencePopover importance star', () => {
+	it('renders individual accessible stars, syncs creation/recovery siblings immediately, preserves button element, and rolls back on failure', async () => {
+		const ownerWindow = Object.assign(new EventTarget(), {
+			setTimeout: (handler: () => void, timeout?: number) => globalThis.setTimeout(handler, timeout) as unknown as number,
+			clearTimeout: (id: number) => globalThis.clearTimeout(id),
+			innerWidth: 1200,
+			innerHeight: 800,
+			MutationObserver: class {
+				observe(): void {}
+				disconnect(): void {}
+			}
+		}) as unknown as Window;
+		const body = new MockElement('body');
+		const ownerDocument = {
+			defaultView: ownerWindow,
+			body
+		} as unknown as Document;
+		const anchor = new MockElement('wn-reference-match');
+		Object.assign(anchor, {
+			ownerDocument,
+			getBoundingClientRect: () => ({ top: 100, bottom: 120, left: 40, right: 140, width: 100, height: 20 })
+		});
+		body.appendChild(anchor);
+		Object.defineProperty(body, 'getBoundingClientRect', {
+			value: () => ({ top: 0, bottom: 800, left: 0, right: 1200, width: 1200, height: 800 })
+		});
+		const origCreateDiv = body.createDiv.bind(body);
+		body.createDiv = (opts?: string | { cls?: string; text?: string }) => {
+			const div = origCreateDiv(opts);
+			Object.assign(div, {
+				getBoundingClientRect: () => ({ top: 0, bottom: 200, left: 0, right: 320, width: 320, height: 200 })
+			});
+			return div;
+		};
+
+		const fsFile = { path: 'Book/Foreshadowing.md' } as TFile;
+		const tlFile = { path: 'Book/Timeline.md' } as TFile;
+		const foreshadowingTarget = { sourcePath: fsFile.path, rawBlock: '## Clue alpha' };
+		const items: ChapterReferenceItem[] = [
+			{
+				id: 'foreshadowing:Book/Foreshadowing.md:0:creation:0',
+				type: 'foreshadowing',
+				kind: 'creation',
+				status: ForeshadowingStatus.PartiallyRecovered,
+				tags: [],
+				quote: 'Shared quote',
+				description: 'Clue alpha',
+				important: false,
+				sourceFile: fsFile,
+				foreshadowingTarget
+			},
+			{
+				id: 'foreshadowing:Book/Foreshadowing.md:0:recovery:0',
+				type: 'foreshadowing',
+				kind: 'recovery',
+				status: ForeshadowingStatus.PartiallyRecovered,
+				tags: [],
+				quote: 'Shared quote',
+				description: 'Clue alpha',
+				important: false,
+				sourceFile: fsFile,
+				foreshadowingTarget
+			},
+			{
+				id: 'timeline:Book/Timeline.md:0:0',
+				type: 'timeline',
+				quote: 'Shared quote',
+				description: 'Timeline event',
+				important: false,
+				sourceFile: tlFile,
+				timelineTarget: {
+					folderPath: 'Book', sourcePath: tlFile.path, itemIndex: 0,
+					expectedEntry: { time: 'Morning', rawBlock: '', chapter: '', description: 'Timeline event' }
+				}
+			}
+		];
+
+		let resolveToggle!: () => void;
+		const onToggleImportance = vi.fn(() => new Promise<void>((resolve) => {
+			resolveToggle = resolve;
+		}));
+		const onImportanceWriteStart = vi.fn();
+		const onImportanceWriteEnd = vi.fn();
+
+		const popover = new ChapterReferencePopover(
+			anchor as unknown as HTMLElement,
+			items,
+			{} as App,
+			true,
+			undefined,
+			{ onToggleImportance, onImportanceWriteStart, onImportanceWriteEnd }
+		);
+
+		const cards = body.querySelectorAll('.wn-reference-popover-item');
+		expect(cards).toHaveLength(3);
+		const stars = body.querySelectorAll('.wn-card-importance-btn');
+		expect(stars).toHaveLength(3);
+		for (const star of stars) {
+			expect(star.getAttribute('aria-pressed')).toBe('false');
+			expect(star.getAttribute('aria-label')).toBeTruthy();
+			expect(star.getAttribute('title')).toBeNull();
+		}
+
+		// Click creation star -> both creation & recovery cards highlight immediately while timeline card stays untouched
+		const clickEvent = { stopPropagation: vi.fn(), preventDefault: vi.fn() };
+		const pendingClick = (stars[0].onclick as unknown as (e: unknown) => Promise<void>)(clickEvent);
+		expect(cards[0].hasClass('is-important')).toBe(true);
+		expect(cards[1].hasClass('is-important')).toBe(true);
+		expect(cards[2].hasClass('is-important')).toBe(false);
+		expect(stars[0].getAttribute('aria-pressed')).toBe('true');
+		expect(stars[1].getAttribute('aria-pressed')).toBe('true');
+		expect(onImportanceWriteStart).toHaveBeenCalledTimes(1);
+		// Shared cached items are not mutated optimistically by the popover UI
+		expect(items[0].important).toBe(false);
+		expect(items[1].important).toBe(false);
+
+		// Clicking sibling star while first write is in flight is blocked before optimistic toggle
+		await (stars[1].onclick as unknown as (e: unknown) => Promise<void>)(clickEvent);
+		expect(onToggleImportance).toHaveBeenCalledTimes(1);
+		expect(cards[0].hasClass('is-important')).toBe(true);
+		expect(cards[1].hasClass('is-important')).toBe(true);
+		expect(stars[0].getAttribute('aria-pressed')).toBe('true');
+		expect(stars[1].getAttribute('aria-pressed')).toBe('true');
+
+		resolveToggle();
+		await pendingClick;
+		expect(onImportanceWriteEnd).toHaveBeenCalledWith(true);
+		expect(items[0].important).toBe(false);
+		expect(items[1].important).toBe(false);
+		expect(body.querySelectorAll('.wn-card-importance-btn')[0]).toBe(stars[0]); // Same DOM node preserves keyboard focus
+
+		// Failed write on sibling rolls back both creation & recovery cards cleanly to local true state
+		onToggleImportance.mockRejectedValueOnce(new Error('Write failed'));
+		const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+		try {
+			await (stars[1].onclick as unknown as (e: unknown) => Promise<void>)(clickEvent);
+		} finally {
+			errSpy.mockRestore();
+		}
+		expect(onToggleImportance).toHaveBeenCalledTimes(2);
+		expect(onImportanceWriteEnd).toHaveBeenLastCalledWith(false);
+		expect(cards[0].hasClass('is-important')).toBe(true);
+		expect(cards[1].hasClass('is-important')).toBe(true);
+		expect(stars[0].getAttribute('aria-pressed')).toBe('true');
+		expect(stars[1].getAttribute('aria-pressed')).toBe('true');
+
+		popover.hide();
 	});
 });

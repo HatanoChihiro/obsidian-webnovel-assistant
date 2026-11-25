@@ -1,7 +1,7 @@
 import { showPluginNotice } from '../services/PluginNoticeService';
-import { Modal, Setting, setTooltip, setIcon } from 'obsidian';
+import { Modal, Setting, TFile, setTooltip, setIcon } from 'obsidian';
 import type { App, TextComponent } from 'obsidian';
-import type { CharacterManager, LoreEntry, LoreRelationItem, LoreSnapshot } from '../services/CharacterManager';
+import { collectExistingLoreTypes, type CharacterManager, type LoreEntry, type LoreRelationItem, type LoreSnapshot } from '../services/CharacterManager';
 import { parseLoreBodyForEditing } from '../services/LoreTemplateService';
 import { LoreCardRenderer } from './components/LoreCardRenderer';
 import { t } from '../i18n';
@@ -102,6 +102,12 @@ export class LoreEditModal extends Modal {
 			? this.plugin.characterManager.getLoreEntriesInFileOrder(this.bookPath)
 			: [];
 		const existingLoreNames = Array.from(new Set(existingLoreEntries.map(e => e.heading).filter(Boolean)));
+		const categories = await this.plugin.characterManager.getAvailableLoreCategories?.(this.bookPath);
+		if (this.isModalClosed) return;
+		const existingFiles = (categories ?? []).map(category => category.file).filter((file): file is TFile => file instanceof TFile);
+		const existingTypes = new Set(await collectExistingLoreTypes(this.app.vault, existingFiles));
+		if (this.isModalClosed) return;
+		if (this.loreType) existingTypes.add(this.loreType);
 
 		const typeSetting = new Setting(contentEl)
 			.setName(t('modal.lore-type'))
@@ -109,8 +115,8 @@ export class LoreEditModal extends Modal {
 
 		typeSetting.addDropdown(dropdown => {
 			dropdown.addOption('__NONE__', t('modal.lore-type-none'));
-			if (this.loreType) {
-				dropdown.addOption(this.loreType, this.loreType);
+			for (const type of existingTypes) {
+				dropdown.addOption(type, type);
 			}
 			dropdown.addOption('__NEW__', t('modal.new-type'));
 			dropdown.setValue(this.loreType ? this.loreType : '__NONE__');
@@ -119,6 +125,7 @@ export class LoreEditModal extends Modal {
 				if (value === '__NEW__') {
 					isCreatingNewType = true;
 					this.loreType = '';
+					typeTextComponent?.setValue('');
 					typeTextComponent?.inputEl.show();
 					typeTextComponent?.inputEl.focus();
 				} else if (value === '__NONE__') {

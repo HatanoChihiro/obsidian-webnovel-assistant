@@ -6,7 +6,7 @@
  * [重构] 将单一巨型接口拆分为功能子接口，通过交叉类型组合
  * 好处：各子系统只需依赖自己关心的接口子集，降低耦合
  */
-import type { App, Command, EventRef, PluginManifest, TFile, ViewCreator} from 'obsidian';
+import type { App, Command, EventRef, PluginManifest, TFile, TFolder, ViewCreator } from 'obsidian';
 import type { AccurateCountSettings } from './settings';
 import type { DefaultFileNameKey } from '../i18n/data-keys';
 import type { CacheManager } from '../services/CacheManager';
@@ -217,8 +217,8 @@ export interface WebNovelAssistantPlugin extends
 	/** 检查文件是否符合字数统计的条件（有效章节 + 未排除统计） */
 	isEligibleForWordCount(file: TFile): boolean;
 	updateWordCount(): void;
-	getTrackedMarkdownFiles(includeLore?: boolean): TFile[];
-	getVaultMarkdownFiles(): TFile[];
+	getTrackedMarkdownFiles(includeLore?: boolean, onFolder?: (folder: TFolder) => void): TFile[];
+	getVaultMarkdownFiles(onFolder?: (folder: TFolder) => void): TFile[];
 		/** 检查文件名是否为插件生成的元数据文件 */
 		isPluginGeneratedFile(basename: string): boolean;
 		/** 重命名工作区内所有功能性文档/文件夹（支持多语言候选名） */

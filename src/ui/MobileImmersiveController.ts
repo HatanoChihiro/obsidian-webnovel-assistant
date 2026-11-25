@@ -1,17 +1,28 @@
 import type { App, EventRef, MarkdownView, TAbstractFile, WorkspaceLeaf } from 'obsidian';
 import { Modal, Setting, TFile, setIcon } from 'obsidian';
-import { MOBILE_IMMERSIVE_AUX_VIEW_TYPES, VIEW_TYPES } from '../constants';
+import { MOBILE_DASHBOARD_STAT_KEYS, MOBILE_IMMERSIVE_AUX_VIEW_TYPES, VALIDATION_RULES, VIEW_TYPES } from '../constants';
 import { t } from '../i18n';
+import {
+	formatMobileDashboardValues,
+	formatMobileTimerValues,
+	getMobileDashboardItemTone,
+	resolveMobileTaskProgress,
+	sanitizeMobileDashboardItems,
+	type MobileDashboardTaskManagerLike
+} from '../services/MobileDashboardStats';
 import {
 	MOBILE_AUX_PANEL_BOUNDS,
 	clampMobileAuxPanelGeometry,
 	clampTabletDockedAuxPanelGeometry,
 	sanitizeMobileAuxPanelState,
+	sanitizeMobileCutoutOffset,
 	type MobileAuxPanelRect,
 	type MobileAuxViewportRect
 } from '../services/MobileImmersivePanelGeometry';
+import { enterMobileNativeFullscreen, type MobileFullscreenHandle } from '../services/ObsidianInternals';
 import type {
 	AccurateCountSettings,
+	MobileDashboardStatKey,
 	MobileImmersiveAuxPanelState,
 	MobileImmersiveAuxViewType
 } from '../types/settings';
@@ -26,7 +37,13 @@ import type {
 export interface MobileImmersiveControllerPlugin {
 	app: App;
 	focusMs?: number;
-	settings: Pick<AccurateCountSettings, 'immersive'>;
+	slackMs?: number;
+	lastTaskFolder?: string;
+	taskManager?: MobileDashboardTaskManagerLike;
+	settings: Pick<AccurateCountSettings, 'immersive'> & Partial<Pick<
+		AccurateCountSettings,
+		'workspaceFolders' | 'loreFolderName' | 'timeline' | 'foreshadowing' | 'novelInfo'
+	>>;
 	statisticsManager: ImmersiveModeManagerStatisticsManager & {
 		getSessionSpeed?: () => number;
 	};
@@ -116,6 +133,7 @@ class MobileImmersiveQuickSettingsModal extends Modal {
 			isActive: () => boolean;
 			onTypewriterChanged: () => void;
 			onManuscriptToggle: (enabled: boolean) => Promise<boolean>;
+			onCutoutChanged: () => void;
 			onClose: () => void;
 		}
 	) {
@@ -166,6 +184,44 @@ class MobileImmersiveQuickSettingsModal extends Modal {
 				const effective = await this.callbacks.onManuscriptToggle(value);
 				if (this.callbacks.isActive() && effective !== value) toggle.setValue(effective);
 			}));
+
+		const cutoutEnabled = Boolean(immersive.mobileCutoutAvoidance);
+		const { min, max } = VALIDATION_RULES.IMMERSIVE_MOBILE_CUTOUT_OFFSET;
+		const initialOffset = sanitizeMobileCutoutOffset(immersive.mobileCutoutLeftOffset);
+
+		let cutoutSliderSetting: Setting | null = null;
+
+		new Setting(contentEl)
+			.setName(t('setting.immersive-mobile-cutout-avoidance'))
+			.setDesc(t('setting.immersive-mobile-cutout-avoidance-desc'))
+			.addToggle(toggle => toggle.setValue(cutoutEnabled).onChange(async value => {
+				if (!this.callbacks.isActive()) return;
+				immersive.mobileCutoutAvoidance = value;
+				if (cutoutSliderSetting) {
+					cutoutSliderSetting.settingEl.hidden = !value;
+					cutoutSliderSetting.settingEl.classList.toggle('is-hidden', !value);
+				}
+				this.callbacks.onCutoutChanged();
+				await this.plugin.saveSettings();
+			}));
+
+		cutoutSliderSetting = new Setting(contentEl)
+			.setName(t('setting.immersive-mobile-cutout-offset'))
+			.setDesc(`${initialOffset}px`)
+			.addSlider(slider => slider
+				.setLimits(min, max, 2)
+				.setValue(initialOffset)
+				.then(attachLegacySliderValue)
+				.onChange(async value => {
+					if (!this.callbacks.isActive()) return;
+					immersive.mobileCutoutLeftOffset = value;
+					cutoutSliderSetting?.setDesc(`${value}px`);
+					this.callbacks.onCutoutChanged();
+					await this.plugin.saveSettings();
+				}));
+
+		cutoutSliderSetting.settingEl.hidden = !cutoutEnabled;
+		cutoutSliderSetting.settingEl.classList.toggle('is-hidden', !cutoutEnabled);
 	}
 
 	onClose(): void {
@@ -197,11 +253,12 @@ export class MobileImmersiveController {
 	private topBarEl: HTMLElement | null = null;
 	private topBarStatsEl: HTMLElement | null = null;
 	private workTitleEl: HTMLElement | null = null;
-	private wordCountEl: HTMLElement | null = null;
-	private progressEl: HTMLElement | null = null;
-	private timerGroupEl: HTMLElement | null = null;
-	private timerTextEl: HTMLElement | null = null;
-	private speedEl: HTMLElement | null = null;
+	private statItemEls: Partial<Record<MobileDashboardStatKey, HTMLElement>> = {};
+	private lastHasStatsRow = true;
+	private topBarTaskSeq = 0;
+	private cachedTaskProgress: { words: number; goal: number } = { words: 0, goal: 0 };
+	private clockIntervalId: number | null = null;
+	private fullscreenHandle: MobileFullscreenHandle | null = null;
 
 	// Fixed left overlay directory
 	private isDirOpen = false;
@@ -255,6 +312,9 @@ export class MobileImmersiveController {
 		this.isDisposed = false;
 		this.isMounted = true;
 		this.sessionGeneration++;
+
+		this.fullscreenHandle?.release();
+		this.fullscreenHandle = enterMobileNativeFullscreen(this.host.app, this.ownerDocument);
 
 		this.createTopBar();
 		this.createDirectoryOverlay();
@@ -334,30 +394,45 @@ export class MobileImmersiveController {
 	}
 
 	// ==========================================
-	// Top Bar (parity with MobileFloatingStats)
+	// Top Bar (header and customizable stats)
 	// ==========================================
+
+	private getSelectedDashboardItems(): MobileDashboardStatKey[] {
+		return sanitizeMobileDashboardItems(this.host.plugin.settings.immersive.mobileDashboardItems);
+	}
+
+	private syncClockInterval(selected: readonly MobileDashboardStatKey[]): void {
+		const needsClock = this.isMounted && !this.isDisposed && selected.includes('currentTime');
+		if (!needsClock) {
+			this.stopClockInterval();
+			return;
+		}
+		if (this.clockIntervalId !== null || typeof this.ownerWindow.setInterval !== 'function') {
+			return;
+		}
+		this.clockIntervalId = this.ownerWindow.setInterval(() => {
+			this.refreshTopBarTimer();
+		}, 1000);
+	}
+
+	private stopClockInterval(): void {
+		if (this.clockIntervalId !== null) {
+			if (typeof this.ownerWindow.clearInterval === 'function') {
+				this.ownerWindow.clearInterval(this.clockIntervalId);
+			}
+			this.clockIntervalId = null;
+		}
+	}
 
 	private createTopBar(): void {
 		if (this.topBarEl) return;
 		const bar = this.ownerDocument.body.createDiv({ cls: 'wn-immersive-mobile-topbar' });
 		this.topBarEl = bar;
-		this.workTitleEl = bar.createSpan({ cls: 'wn-immersive-mobile-work-title' });
-		const statsGroup = bar.createDiv({ cls: 'wn-immersive-mobile-topbar-stats' });
-		this.topBarStatsEl = statsGroup;
-		this.wordCountEl = statsGroup.createSpan({
-			cls: 'wn-immersive-mobile-stat wn-immersive-mobile-word-count',
-			text: `0${t('common.word-char')}`
-		});
-		this.progressEl = statsGroup.createSpan({
-			cls: 'wn-immersive-mobile-stat wn-immersive-mobile-progress wn-text-accent',
-			text: '0%'
-		});
-		const timerGroup = statsGroup.createSpan({ cls: 'wn-immersive-mobile-timer' });
-		this.timerTextEl = timerGroup.createSpan({ cls: 'wn-immersive-mobile-stat wn-immersive-mobile-timer-text wn-text-accent' });
-		this.speedEl = timerGroup.createSpan({ cls: 'wn-immersive-mobile-stat wn-immersive-mobile-speed' });
-		this.timerGroupEl = timerGroup;
 
-		const rightGroup = bar.createDiv({ cls: 'wn-immersive-mobile-topbar-right' });
+		const headerRow = bar.createDiv({ cls: 'wn-immersive-mobile-topbar-header' });
+		this.workTitleEl = headerRow.createSpan({ cls: 'wn-immersive-mobile-work-title' });
+
+		const rightGroup = headerRow.createDiv({ cls: 'wn-immersive-mobile-topbar-right' });
 		const settingsBtn = rightGroup.createEl('button', {
 			cls: 'clickable-icon wn-immersive-mobile-topbar-btn wn-immersive-mobile-settings-btn',
 			attr: { type: 'button', 'aria-label': t('immersive.mobile-quick-settings') }
@@ -376,10 +451,55 @@ export class MobileImmersiveController {
 			e.stopPropagation();
 			void this.host.onRequestExit();
 		});
+
+		const statsGroup = bar.createDiv({ cls: 'wn-immersive-mobile-topbar-stats' });
+		this.topBarStatsEl = statsGroup;
+		this.statItemEls = {};
+		for (const key of MOBILE_DASHBOARD_STAT_KEYS) {
+			const tone = getMobileDashboardItemTone(key);
+			const toneCls = tone === 'focus' ? ' is-focus' : tone === 'slack' ? ' is-slack' : '';
+			const el = statsGroup.createSpan({
+				cls: `wn-immersive-mobile-stat${toneCls} is-hidden`
+			});
+			el.setAttribute('data-stat-key', key);
+			el.hidden = true;
+			this.statItemEls[key] = el;
+		}
+		this.lastHasStatsRow = this.getSelectedDashboardItems().length > 0;
+		statsGroup.hidden = !this.lastHasStatsRow;
+		statsGroup.classList.toggle('is-hidden', !this.lastHasStatsRow);
+		this.applyCutoutOffset();
+	}
+
+	public applyCutoutOffset(): void {
+		if (!this.topBarEl) return;
+		const immersive = this.host.plugin.settings.immersive;
+		const offset = immersive.mobileCutoutAvoidance ? sanitizeMobileCutoutOffset(immersive.mobileCutoutLeftOffset) : 0;
+		this.topBarEl.setCssProps({
+			'--wn-immersive-mobile-cutout-left-offset': `${offset}px`
+		});
+	}
+
+	private applyStatVisibilityAndValues(
+		selected: readonly MobileDashboardStatKey[],
+		values: Partial<Record<MobileDashboardStatKey, string>>
+	): void {
+		const selectedSet = new Set<MobileDashboardStatKey>(selected);
+		for (const key of MOBILE_DASHBOARD_STAT_KEYS) {
+			const el = this.statItemEls[key];
+			if (!el) continue;
+			const visible = selectedSet.has(key);
+			el.hidden = !visible;
+			el.classList.toggle('is-hidden', !visible);
+			if (visible && values[key] !== undefined) {
+				el.textContent = values[key]!;
+			}
+		}
 	}
 
 	public refreshTopBar(): void {
 		if (!this.isMounted || this.isDisposed || !this.topBarEl) return;
+		this.applyCutoutOffset();
 
 		const mainFile = this.host.getMainFile();
 		const workPath = this.host.plugin.immersiveReferenceManager.getWorkPath(mainFile);
@@ -390,69 +510,75 @@ export class MobileImmersiveController {
 			this.workTitleEl.hidden = !workName;
 			this.workTitleEl.classList.toggle('is-hidden', !workName);
 		}
-		if (!mainFile) {
-			if (this.wordCountEl) this.wordCountEl.textContent = `0${t('common.word-char')}`;
-			if (this.progressEl) this.progressEl.textContent = '0%';
-			this.refreshTopBarTimer();
+
+		const selected = this.getSelectedDashboardItems();
+		this.syncClockInterval(selected);
+		const hasStatsRow = selected.length > 0;
+		if (this.topBarStatsEl) {
+			this.topBarStatsEl.hidden = !hasStatsRow;
+			this.topBarStatsEl.classList.toggle('is-hidden', !hasStatsRow);
+		}
+		if (hasStatsRow !== this.lastHasStatsRow) {
+			this.lastHasStatsRow = hasStatsRow;
+			this.syncViewportMetrics(true);
+		}
+		if (!hasStatsRow) {
+			this.applyStatVisibilityAndValues(selected, {});
 			return;
 		}
 
-		const stats = this.host.plugin.statisticsManager.getCoreStats();
-		const wordCount = stats.todayWords;
-		const percent = stats.percent ?? 0;
+		const rawStats = mainFile
+			? this.host.plugin.statisticsManager.getCoreStats()
+			: this.host.plugin.statisticsManager.getCoreStats(null);
+		const stats = mainFile
+			? rawStats
+			: { ...rawStats, todayWords: 0 };
+		const values = formatMobileDashboardValues(stats, this.cachedTaskProgress);
+		this.applyStatVisibilityAndValues(selected, values);
 
-		if (this.wordCountEl) {
-			this.wordCountEl.textContent = wordCount.toLocaleString() + t('common.word-char');
+		if (selected.includes('taskProgress') && this.host.plugin.taskManager) {
+			const reqSeq = ++this.topBarTaskSeq;
+			const sessionGen = this.sessionGeneration;
+			void resolveMobileTaskProgress({
+				app: this.host.app,
+				plugin: this.host.plugin,
+				file: mainFile
+			}).then(progress => {
+				if (this.isDisposed || !this.isMounted || sessionGen !== this.sessionGeneration || reqSeq !== this.topBarTaskSeq) {
+					return;
+				}
+				this.cachedTaskProgress = progress;
+				const taskEl = this.statItemEls.taskProgress;
+				if (taskEl && !taskEl.hidden) {
+					taskEl.textContent = `${progress.words}/${progress.goal}`;
+				}
+			});
 		}
-		if (this.progressEl) {
-			this.progressEl.textContent = `${percent}%`;
-			if (percent >= 100) {
-				this.progressEl.removeClass('wn-text-orange', 'wn-text-accent');
-				this.progressEl.addClass('wn-text-green');
-			} else if (percent >= 50) {
-				this.progressEl.removeClass('wn-text-green', 'wn-text-accent');
-				this.progressEl.addClass('wn-text-orange');
-			} else {
-				this.progressEl.removeClass('wn-text-green', 'wn-text-orange');
-				this.progressEl.addClass('wn-text-accent');
-			}
-		}
-		this.refreshTopBarTimer();
 	}
 
 	public refreshTopBarTimer(): void {
-		if (!this.isMounted || this.isDisposed || !this.timerGroupEl || !this.timerTextEl) return;
+		if (!this.isMounted || this.isDisposed || !this.topBarStatsEl) return;
+		const selected = this.getSelectedDashboardItems();
+		this.syncClockInterval(selected);
+		if (selected.length === 0) return;
+
 		const statsManager = this.host.plugin.statisticsManager;
 		const speed = typeof statsManager.getSessionSpeed === 'function'
 			? statsManager.getSessionSpeed()
 			: (statsManager.getCoreStats().sessionSpeed ?? 0);
-		if (this.speedEl) {
-			this.speedEl.textContent = `${speed} ${t('common.words-per-hour-unit')}`;
-		}
 
-		const focusSec = Math.round((this.host.plugin.focusMs || 0) / 1000);
-		const h = Math.floor(focusSec / 3600).toString().padStart(2, '0');
-		const m = Math.floor((focusSec % 3600) / 60).toString().padStart(2, '0');
-		const s = (focusSec % 60).toString().padStart(2, '0');
+		const timerValues = formatMobileTimerValues({
+			focusMs: this.host.plugin.focusMs,
+			slackMs: this.host.plugin.slackMs,
+			sessionSpeed: speed
+		});
 
-		this.timerTextEl.textContent = `${h}:${m}:${s}`;
-		this.fitTopBarData();
-	}
-
-	private fitTopBarData(): void {
-		const stats = this.topBarStatsEl;
-		if (!this.isMounted || this.isDisposed || !this.topBarEl || !stats) return;
-		const availableWidth = stats.clientWidth;
-		if (!(availableWidth > 0)) return;
-		const baseFont = Number.parseFloat(this.ownerWindow.getComputedStyle(this.topBarEl).fontSize) || 14;
-		let fontSize = baseFont;
-		stats.setCssProps({ '--wn-immersive-mobile-stats-font-size': `${fontSize}px` });
-		// Text and em-based gaps shrink together; a second pass covers subpixel rounding.
-		for (let pass = 0; pass < 2; pass++) {
-			const requiredWidth = stats.scrollWidth;
-			if (!(requiredWidth > availableWidth)) break;
-			fontSize = Math.max(1, Math.floor(fontSize * (availableWidth - 1) / requiredWidth * 100) / 100);
-			stats.setCssProps({ '--wn-immersive-mobile-stats-font-size': `${fontSize}px` });
+		for (const key of ['totalTime', 'focusTime', 'slackTime', 'sessionSpeed', 'currentTime'] as const) {
+			if (!selected.includes(key)) continue;
+			const el = this.statItemEls[key];
+			if (el) {
+				el.textContent = timerValues[key];
+			}
 		}
 	}
 
@@ -516,6 +642,7 @@ export class MobileImmersiveController {
 				this.refreshMainEditorLayout();
 			},
 			onManuscriptToggle: enabled => this.host.onHandleManuscriptSettingChanged(enabled),
+			onCutoutChanged: () => this.applyCutoutOffset(),
 			onClose: () => { if (this.activeSettingsModal === modal) this.activeSettingsModal = null; }
 		});
 		this.activeSettingsModal = modal;
@@ -1531,7 +1658,11 @@ export class MobileImmersiveController {
 
 	private getTopBarHeight(): number {
 		const safeTop = this.readSafeAreaInsets().top;
-		const minRequired = 44 + safeTop;
+		const hasStatsRow = this.getSelectedDashboardItems().length > 0;
+		const row1Min = this.fullscreenHandle?.isNativeFullscreen
+			? Math.max(36, safeTop)
+			: (36 + safeTop);
+		const minRequired = row1Min + (hasStatsRow ? 32 : 0);
 		const rectHeight = typeof this.topBarEl?.getBoundingClientRect === 'function'
 			? this.topBarEl.getBoundingClientRect().height
 			: 0;
@@ -1635,8 +1766,6 @@ export class MobileImmersiveController {
 			'--wn-immersive-mobile-topbar-height': `${topBarHeight}px`
 		});
 
-		this.fitTopBarData();
-
 		if (this.activeGesture?.viewport) this.activeGesture.viewport = this.getAuxViewportRect();
 
 		// 即使面板已锁定，旋转/缩放/软键盘弹出时也必须重新约束以确保控件可达且不覆盖首选尺寸
@@ -1684,7 +1813,10 @@ export class MobileImmersiveController {
 		this.auxGeneration++;
 
 		this.cancelActiveGesture();
+		this.stopClockInterval();
 		this.unbindViewportListeners();
+		this.fullscreenHandle?.release();
+		this.fullscreenHandle = null;
 		const settingsModal = this.activeSettingsModal;
 		this.activeSettingsModal = null;
 		try { settingsModal?.close(); } catch (err) {
@@ -1704,14 +1836,10 @@ export class MobileImmersiveController {
 		this.topBarEl = null;
 		this.topBarStatsEl = null;
 		this.workTitleEl = null;
+		this.statItemEls = {};
 		this.safeAreaProbeEl?.remove();
 		this.safeAreaProbeEl = null;
 		this.lastTopBarHeight = 0;
-		this.wordCountEl = null;
-		this.progressEl = null;
-		this.timerGroupEl = null;
-		this.timerTextEl = null;
-		this.speedEl = null;
 
 		this.dirBackdropEl?.remove();
 		this.dirBackdropEl = null;

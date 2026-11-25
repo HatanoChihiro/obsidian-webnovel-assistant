@@ -434,6 +434,39 @@ export class ForeshadowingManager {
 			return newImportant;
 		});
 	}
+
+	/**
+	 * 按精确记录身份设置伏笔条目重要状态（兼容新旧格式，仅修改重要标记，不重写无关元数据）
+	 */
+	async setEntryImportance(
+		targetFile: TFile,
+		important: boolean,
+		expectedPath: string,
+		expectedRaw: string
+	): Promise<void> {
+		const assertSource = (): void => {
+			if (targetFile.path !== expectedPath || this.app.vault.getAbstractFileByPath(expectedPath) !== targetFile) {
+				throw new Error('Foreshadowing source file no longer matches');
+			}
+		};
+
+		return this.writer.enqueue(async () => {
+			assertSource();
+			await this.app.vault.process(targetFile, (content) => {
+				assertSource();
+				const spans = ForeshadowingParser.parseEntriesWithSpans(content);
+				const matches = spans.filter(({ entry }) => entry.rawBlock && ForeshadowingParser.matchesRawBlockIgnoringImportance(entry.rawBlock, expectedRaw));
+				if (matches.length !== 1) {
+					throw new Error('Foreshadowing entry conflict');
+				}
+				const [targetSpan] = matches;
+				const originalBlock = content.slice(targetSpan.startPos, targetSpan.endPos);
+				const patchedBlock = ForeshadowingParser.patchBlockImportance(originalBlock, important);
+				if (patchedBlock === originalBlock) return content;
+				return content.slice(0, targetSpan.startPos) + patchedBlock + content.slice(targetSpan.endPos);
+			});
+		});
+	}
 	async getExistingTags(sourceFile: TFile): Promise<string[]> {
 		const folder = sourceFile.parent?.path || '';
 		const foreshadowFile = this.getForeshadowingFileByFolder(folder);

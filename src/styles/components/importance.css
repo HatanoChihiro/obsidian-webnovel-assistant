@@ -10,7 +10,8 @@ button.wn-workbench-filter-important-toggle,
 .wn-lore-card,
 .wn-task-card,
 .wn-timeline-item-desc,
-.wn-trajectory-event {
+.wn-trajectory-event,
+.wn-reference-popover-item {
 	--wn-important-color: color-mix(in srgb, var(--color-yellow, var(--text-warning, var(--interactive-accent))) 80%, var(--text-normal));
 	--wn-important-border: color-mix(in srgb, var(--wn-important-color) 60%, var(--background-modifier-border));
 	--wn-important-border-hover: color-mix(in srgb, var(--wn-important-color) 70%, var(--background-modifier-border));
@@ -175,6 +176,19 @@ body.is-phone .webnovel-lore-popover .wn-lore-card-header {
 	z-index: 4;
 }
 
+.wn-reference-item-header {
+	position: relative;
+	min-height: 20px;
+	padding-right: 28px;
+}
+
+.wn-reference-item-header .wn-card-importance-btn {
+	position: absolute;
+	top: -2px;
+	right: -2px;
+	z-index: 4;
+}
+
 /* 时间线操作栏内的星标使用流式定位，位于垂直单列最上方 */
 .wn-timeline-item-actions .wn-card-importance-btn {
 	position: relative;
@@ -187,7 +201,8 @@ body.is-phone .webnovel-lore-popover .wn-lore-card-header {
 .wn-foreshadowing-board-card:is(.is-important, .wn-card-is-important),
 .wn-corkboard-card:is(.is-important, .wn-card-is-important),
 .wn-lore-card:is(.is-important, .wn-card-is-important),
-.wn-task-card:is(.is-important, .wn-card-is-important) {
+.wn-task-card:is(.is-important, .wn-card-is-important),
+.wn-reference-popover-item:is(.is-important, .wn-card-is-important) {
 	outline: 1px solid var(--wn-important-border);
 	outline-offset: -1px;
 }
@@ -195,7 +210,8 @@ body.is-phone .webnovel-lore-popover .wn-lore-card-header {
 .wn-foreshadowing-board-card:is(.is-important, .wn-card-is-important):hover,
 .wn-corkboard-card:is(.is-important, .wn-card-is-important):hover,
 .wn-lore-card:is(.is-important, .wn-card-is-important):hover,
-.wn-task-card:is(.is-important, .wn-card-is-important):hover {
+.wn-task-card:is(.is-important, .wn-card-is-important):hover,
+.wn-reference-popover-item:is(.is-important, .wn-card-is-important):hover {
 	outline-color: var(--wn-important-border-hover);
 }
 

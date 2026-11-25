@@ -73,6 +73,22 @@ export class Component {
 	}
 }
 
+export class MarkdownRenderChild extends Component {
+	containerEl: HTMLElement;
+	constructor(containerEl: HTMLElement) {
+		super();
+		this.containerEl = containerEl;
+	}
+	load(): void {
+		this.onload();
+	}
+	onload(): void {}
+	unload(): void {
+		this.onunload();
+	}
+	onunload(): void {}
+}
+
 export const mockNoticeMessages: string[] = [];
 
 export function resetNoticeMessages(): void {

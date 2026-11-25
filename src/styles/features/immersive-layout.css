@@ -44,7 +44,7 @@ body.wn-immersive-mode-active.wn-immersive-mode-active .app-container.app-contai
 body.wn-immersive-mode-active.wn-immersive-mobile-active .app-container.app-container .workspace.workspace {
 	margin-top: calc(var(--wn-immersive-mobile-viewport-top, 0px) + var(--wn-immersive-mobile-topbar-height, 44px));
 	height: calc(var(--wn-immersive-mobile-viewport-height, 100%) - var(--wn-immersive-mobile-topbar-height, 44px));
-	padding-bottom: max(var(--safe-area-inset-bottom, 0px), env(safe-area-inset-bottom, 0px));
+	padding-bottom: 0;
 	padding-right: var(--wn-immersive-mobile-dock-width, 0px);
 	box-sizing: border-box;
 }

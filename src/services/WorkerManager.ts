@@ -31,13 +31,13 @@ export class WorkerManager {
 
 	private isMobileImmersiveActive(): boolean {
 		const imm = this.plugin.immersiveModeManager;
-		return Boolean(imm?.isMobileDataIsolationActive?.() ?? imm?.isMobileImmersiveSessionActive?.());
+		return imm?.isMobileDataIsolationActive() ?? false;
 	}
 
 	private resolveScopedFile(fallback: TFile | null): TFile | null {
 		if (this.isMobileImmersiveActive()) {
 			const imm = this.plugin.immersiveModeManager;
-			return imm?.getDataScopedMainFile?.() ?? imm?.getActiveSessionMainFile?.() ?? null;
+			return imm?.getDataScopedMainFile() ?? null;
 		}
 		return fallback;
 	}
@@ -126,7 +126,7 @@ export class WorkerManager {
 	public reevaluateScope(): void {
 		if (this.isMobileImmersiveActive()) {
 			const imm = this.plugin.immersiveModeManager;
-			const mainFile = imm?.getDataScopedMainFile?.() ?? imm?.getActiveSessionMainFile?.() ?? null;
+			const mainFile = imm?.getDataScopedMainFile() ?? null;
 			this.currentScopeFile = mainFile;
 		} else if (!this.currentScopeFile) {
 			const activeFile = this.plugin.app.workspace.getActiveFile();
@@ -156,7 +156,7 @@ export class WorkerManager {
 	public handleActiveFileChange(file: TFile | null): void {
 		const imm = this.plugin.immersiveModeManager;
 		const targetFile = this.isMobileImmersiveActive()
-			? (imm?.getDataScopedMainFile?.() ?? imm?.getActiveSessionMainFile?.() ?? null)
+			? (imm?.getDataScopedMainFile() ?? null)
 			: file;
 		if (!targetFile) {
 			return;
@@ -187,7 +187,7 @@ export class WorkerManager {
 					return;
 				}
 			}
-			const mainFile = imm?.getDataScopedMainFile?.() ?? imm?.getActiveSessionMainFile?.() ?? null;
+			const mainFile = imm?.getDataScopedMainFile() ?? null;
 			if (!mainFile) return;
 			if (file && file !== mainFile && file.path !== mainFile.path) {
 				return;
@@ -370,6 +370,8 @@ export class WorkerManager {
 
 		if (isNewDay) {
 			this.plugin.refreshStatusViews(true);
+			if (this.isMobileImmersiveActive()) this.plugin.immersiveModeManager.refreshMobileTopBar();
+			else this.plugin.mobileFloatingStats?.update();
 		} else {
 			this.plugin.refreshStatusTimers();
 		}

@@ -152,12 +152,10 @@
 	}
 
 	body.is-phone .wn-corkboard-card-title {
-		font-size: var(--wn-phone-font-title);
 		font-weight: 600;
 	}
 
 	body.is-phone .wn-corkboard-card-status {
-		font-size: var(--wn-phone-font-meta);
 		padding: 1px 4px;
 	}
 
@@ -169,7 +167,6 @@
 	body.is-phone .wn-corkboard-card-text,
 	body.is-phone body textarea.wn-corkboard-textarea,
 	body.is-phone .wn-corkboard-card-content .wn-corkboard-textarea {
-		font-size: var(--wn-phone-font-body);
 		font-weight: 400;
 		line-height: 1.4;
 	}
@@ -193,7 +190,13 @@
 		padding-left: 14px;
 	}
 
-	body.is-phone .wn-timeline-node-title::before,
+	body.is-phone .wn-timeline-node-handle {
+		width: 9px;
+		height: 9px;
+		border-width: 1.5px;
+		left: -2px;
+	}
+
 	body.is-phone .wn-timeline-add-node-row::before {
 		width: 7px;
 		height: 7px;
@@ -217,19 +220,6 @@
 		font-size: var(--wn-phone-font-body);
 		font-weight: 400;
 		line-height: 1.4;
-	}
-
-	/* 设定看板卡片模式 - 文件 Tab 栏手机端精细微缩 */
-	body.is-phone .wn-lore-file-tabs {
-		padding: 0 8px 6px;
-		gap: 4px;
-	}
-
-	body.is-phone .wn-lore-file-tab {
-		font-size: var(--wn-phone-font-control);
-		padding: 3px 8px;
-		border-radius: 5px;
-		gap: 4px;
 	}
 
 	body.is-phone .wn-lore-file-tab-count {
@@ -371,12 +361,12 @@
 		border-radius: 3px;
 	}
 
-	body.is-phone .wn-lore-board-mini-card-title {
-		font-size: var(--wn-phone-font-title);
+	body.is-phone .wn-lore-board-layout-table .wn-lore-board-mini-card-title {
+		font-size: calc(var(--wn-phone-font-title) - 2px);
 	}
 
-	body.is-phone .wn-lore-board-mini-card-count {
-		font-size: var(--wn-phone-font-meta);
+	body.is-phone .wn-lore-board-layout-table .wn-lore-board-mini-card-count {
+		font-size: calc(var(--wn-phone-font-meta) - 1px);
 	}
 
 	/* 伏笔侧面板卡片与回收/废弃按钮字体恢复侧栏标准字号 */

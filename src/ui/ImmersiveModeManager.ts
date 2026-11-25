@@ -101,6 +101,7 @@ export interface ImmersiveModeManagerPlugin extends Omit<FindBookRootPlugin, 'se
 	app: App;
 	isTracking?: boolean;
 	focusMs?: number;
+	slackMs?: number;
 	mobileFloatingStats?: Pick<MobileFloatingStats, 'update'> | null;
 	settings: ImmersiveModeManagerSettings;
 	stickyNoteManager: ImmersiveModeManagerStickyNoteManager;
@@ -192,6 +193,8 @@ export class ImmersiveModeManager {
 
 	// 顶部栏元素缓存
 	private topBarStatsEls: Record<string, HTMLElement> = {};
+	private manuscriptControlsEl: HTMLElement | null = null;
+	private manuscriptToggle: ToggleComponent | null = null;
 	private typewriterControlsEl: HTMLElement | null = null;
 	private typewriterToggle: ToggleComponent | null = null;
 	private typewriterGearBtn: HTMLButtonElement | null = null;
@@ -1999,6 +2002,31 @@ export class ImmersiveModeManager {
 			el.hide();
 		}
 
+		const manuscriptWrapper = centerDiv.createDiv({ cls: 'wn-stat-item wn-immersive-manuscript-toggle' });
+		const manuscriptLabel = t('immersive.manuscript-toggle-label');
+		manuscriptWrapper.createSpan({ cls: 'wn-immersive-manuscript-toggle-label', text: manuscriptLabel });
+		const manuscriptToggle = new ToggleComponent(manuscriptWrapper);
+		manuscriptToggle.toggleEl.setAttribute('aria-label', manuscriptLabel);
+		this.manuscriptControlsEl = manuscriptWrapper;
+		this.manuscriptToggle = manuscriptToggle
+			.setValue(Boolean(this.plugin.settings.immersive.manuscriptModeEnabled))
+			.onChange(async (value) => {
+				if (this.manuscriptToggle !== manuscriptToggle || !this.isImmersiveSessionActive()) return;
+				manuscriptToggle.setDisabled(true);
+				this.plugin.settings.immersive.manuscriptModeEnabled = value;
+				try {
+					await this.handleManuscriptModeSettingChanged(value);
+					await this.plugin.saveSettings();
+				} catch (error) {
+					Logger.error('[ImmersiveModeManager] Failed to change manuscript mode:', error);
+				} finally {
+					if (this.manuscriptToggle === manuscriptToggle) {
+						manuscriptToggle.setValue(Boolean(this.plugin.settings.immersive.manuscriptModeEnabled));
+						manuscriptToggle.setDisabled(false);
+					}
+				}
+			});
+
 		// 在中间数据栏的最右侧嵌入打字机原生 Toggle 开关与设置齿轮
 		const typewriterWrapper = centerDiv.createDiv({ cls: 'wn-stat-item wn-typewriter-toggle-container' });
 		this.typewriterControlsEl = typewriterWrapper;
@@ -2062,6 +2090,8 @@ export class ImmersiveModeManager {
 			this.topBarEl = null;
 		}
 		this.topBarStatsEls = {};
+		this.manuscriptControlsEl = null;
+		this.manuscriptToggle = null;
 		this.typewriterControlsEl = null;
 		this.typewriterToggle = null;
 		this.typewriterGearBtn = null;
@@ -2071,6 +2101,16 @@ export class ImmersiveModeManager {
 	private async renderTopBarContent(): Promise<void> {
 		if (!this.topBarEl) return;
 		const immersive = this.plugin.settings.immersive;
+		const showManuscriptControl = immersive.immersiveShowManuscriptControl !== false;
+		if (this.manuscriptControlsEl && this.manuscriptControlsEl.isShown() !== showManuscriptControl) {
+			if (showManuscriptControl) this.manuscriptControlsEl.show();
+			else this.manuscriptControlsEl.hide();
+		}
+		const manuscriptEnabled = Boolean(immersive.manuscriptModeEnabled);
+		if (this.manuscriptToggle && this.manuscriptToggle.getValue() !== manuscriptEnabled) {
+			this.manuscriptToggle.setValue(manuscriptEnabled);
+		}
+
 		const showTypewriterControls = immersive.immersiveShowTypewriterControls !== false;
 		const controls = this.typewriterControlsEl;
 		if (controls && controls.isShown() !== showTypewriterControls) {

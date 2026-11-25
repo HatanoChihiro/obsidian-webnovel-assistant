@@ -23,7 +23,7 @@ import { ItemView, TFile, type App } from 'obsidian';
 declare class ResizeObserver { constructor(callback: (...args: unknown[]) => void); observe(target: Element): void; disconnect(): void; }
 import type { WorkspaceLeaf } from 'obsidian';
 import type { CharacterManager } from '../services/CharacterManager';
-import type { RelationGraphManager, GraphNode, GraphData, GraphEdge } from '../services/RelationGraphManager';
+import { reconcileGraphData, type RelationGraphManager, type GraphNode, type GraphData, type GraphEdge } from '../services/RelationGraphManager';
 import { ForceLayoutEngine, type LayoutNode, type LayoutEdge } from '../services/ForceLayoutEngine';
 import { GraphRenderer, type GraphRenderState, type ThemeColors } from './components/GraphRenderer';
 import { cleanLoreHeading } from '../services/CharacterManager';
@@ -524,6 +524,11 @@ export class RelationGraphView extends ItemView {
 			return;
 		}
 
+		this.showGraph(data);
+	}
+
+	private showGraph(data: GraphData): void {
+		this.clearEmptyState();
 		this.resetHoverState();
 		this.graphData = data;
 		this.fullGraphData = null;
@@ -548,7 +553,7 @@ export class RelationGraphView extends ItemView {
 		});
 
 		// 构建双向边查找集合
-		this.buildEdgeOffsets();
+		this.buildEdgeOffsets(true);
 
 		// 初始化力导向引擎
 		this.initEngine();
@@ -598,53 +603,69 @@ export class RelationGraphView extends ItemView {
 			return;
 		}
 
-		// 保留现有节点的物理坐标，避免刷新时图谱“爆炸”
-		const oldNodesMap = new Map(this.graphData.nodes.map(n => [n.id, n]));
-		
-		const cx = this.canvas ? this.canvas.width / DPR / 2 : 150;
-		const cy = this.canvas ? this.canvas.height / DPR / 2 : 150;
-		const radius = Math.min(cx, cy) * 0.8;
-
-		newData.nodes.forEach((newNode, i) => {
-			const oldNode = oldNodesMap.get(newNode.id);
-			if (oldNode) {
-				newNode.x = oldNode.x;
-				newNode.y = oldNode.y;
-				newNode.vx = oldNode.vx;
-				newNode.vy = oldNode.vy;
-				newNode.pinned = oldNode.pinned;
-			} else {
-				// 新加入的节点放在外围圆环上，方便引擎自然拉入
-				const angle = (i / newData.nodes.length) * Math.PI * 2;
-				newNode.x = cx + radius * Math.cos(angle);
-				newNode.y = cy + radius * Math.sin(angle);
-				newNode.vx = 0;
-				newNode.vy = 0;
-				newNode.pinned = false;
-			}
-		});
-
-		this.resetHoverState();
-		this.graphData = newData;
-		this.controller?.updateLayout(this.graphData);
-		this.buildEdgeOffsets();
-
-		if (this.engine) {
-			this.engine.updateData(this.graphData.nodes, this.graphData.edges);
-			this.engine.reheat();
-			this.startAnimationLoop();
-		} else {
-			this.initEngine();
-			this.startAnimationLoop(true);
+		if (!this.engine) {
+			this.showGraph(newData);
+			return;
 		}
+
+		const { nodesChanged, edgesChanged, physicsChanged } = reconcileGraphData(
+			this.graphData, newData, this.canvas.width / DPR, this.canvas.height / DPR
+		);
+		if (!nodesChanged && !edgesChanged) return;
+
+		if (nodesChanged) {
+			const nodes = this.graphData.nodes;
+			if (this.renderState.selectedNode && !nodes.includes(this.renderState.selectedNode)) {
+				this.renderState.selectedNode = null;
+			}
+			this.resetHoverState();
+			if (this.renderState.localFocusNode && !nodes.includes(this.renderState.localFocusNode)) {
+				this.renderState.localFocusNode = null;
+				this.renderState.isLocalMode = false;
+				this.fullGraphData = null;
+				this.updateBreadcrumb();
+			}
+			this.controller?.updateLayout(this.graphData);
+		}
+		if (edgesChanged) this.buildEdgeOffsets(true);
+		if (physicsChanged) this.engine.updateData(this.graphData.nodes, this.graphData.edges);
 		this.requestRender();
+	}
+
+	private clearEmptyState(): void {
+		if (this.canvas) {
+			this.canvas.hidden = false;
+		}
+		this.container?.querySelector('.wna-relation-graph-empty')?.remove();
 	}
 
 	/**
 	 * 显示空状态提示（无数据时）
 	 */
 	private showEmptyState(): void {
+		if (this.canvas?.hidden) return;
 		this.resetHoverState();
+		if (this.animationFrameId) {
+			const win = this.container?.ownerDocument?.defaultView ?? window;
+			win.cancelAnimationFrame(this.animationFrameId);
+			this.animationFrameId = 0;
+		}
+		if (this.engine) {
+			this.engine.destroy();
+			this.engine = null;
+		}
+		this.graphData = { nodes: [], edges: [] };
+		this.fullGraphData = null;
+		this.renderState.graphData = this.graphData;
+		this.renderState.isLocalMode = false;
+		this.renderState.localFocusNode = null;
+		this.renderState.selectedNode = null;
+		this.renderState.edgeOffsetMap.clear();
+		this.renderState.edgeDrawModeMap.clear();
+		this.renderState.combinedLabelMap.clear();
+		this.controller?.updateLayout(this.graphData);
+		this.updateBreadcrumb();
+
 		if (!this.container) return;
 		if (this.canvas) {
 			this.canvas.hidden = true;
@@ -677,19 +698,7 @@ export class RelationGraphView extends ItemView {
 		const width = this.canvas.width / DPR;
 		const height = this.canvas.height / DPR;
 
-		// 将 GraphNode 转换为 LayoutNode（接口兼容）
-		const layoutNodes: LayoutNode[] = this.graphData.nodes.map(n => ({
-			id: n.id,
-			x: n.x,
-			y: n.y,
-			vx: n.vx,
-			vy: n.vy,
-			pinned: n.pinned,
-			isProtagonist: n.isProtagonist,
-			nodeType: n.nodeType,
-		}));
-
-		this.engine = new ForceLayoutEngine(layoutNodes, this.graphData.edges, width, height);
+		this.engine = new ForceLayoutEngine(this.graphData.nodes, this.graphData.edges, width, height);
 	}
 
 	/**
@@ -746,9 +755,6 @@ export class RelationGraphView extends ItemView {
 				if (running) physicsRunning = true;
 			}
 
-			// 将引擎计算后的坐标同步回 GraphNode 用于渲染
-			this.syncNodePositions();
-
 			// 渲染
 			const hasActiveFocus = Boolean(this.renderState.hoveredNode || this.renderState.selectedNode);
 			if (physicsRunning || this.needsRender || hasActiveFocus) {
@@ -765,17 +771,6 @@ export class RelationGraphView extends ItemView {
 		};
 
 		this.animationFrameId = win.requestAnimationFrame(loop);
-	}
-
-	/**
-	 * 将引擎中的坐标同步回 GraphNode 数组
-	 */
-	private syncNodePositions(): void {
-		if (!this.engine) return;
-		for (let i = 0; i < this.engine.nodes.length && i < this.graphData.nodes.length; i++) {
-			this.graphData.nodes[i].x = this.engine.nodes[i].x;
-			this.graphData.nodes[i].y = this.engine.nodes[i].y;
-		}
 	}
 
 	// ==========================================

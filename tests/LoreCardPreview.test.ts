@@ -1277,14 +1277,14 @@ describe('LoreCardPreview', () => {
 		});
 	});
 
-	describe('LoreBoardRenderer.renderTable 文件选项卡', () => {
+	describe('LoreBoardRenderer 文件选项卡', () => {
 		interface TableLoreFile {
 			path: string;
 			basename: string;
 			headings: string[];
 		}
 
-		function buildTableFixture(options: { activeFile?: string; loreFiles?: TableLoreFile[] } = {}) {
+		function buildTableFixture(options: { activeFile?: string; loreFiles?: TableLoreFile[]; layout?: 'table' | 'cards' } = {}) {
 			const dom = createMockDom();
 			setupMockOwnerWindow(dom);
 			const container = dom.body.createDiv('board-container');
@@ -1311,7 +1311,7 @@ describe('LoreCardPreview', () => {
 			}
 
 			const settings = {
-				loreBoardLayout: 'table',
+				loreBoardLayout: options.layout ?? 'table',
 				loreBoardActiveFile: options.activeFile ?? '',
 				lorePopoverCollapse: false,
 				loreCardPreviewEnabled: false,
@@ -1361,13 +1361,18 @@ describe('LoreCardPreview', () => {
 			return { container, settings, saveSettings, render, loreFiles };
 		}
 
-		it('表格模式渲染文件选项卡：全部 + 各设定文件（带条数徽标）', async () => {
-			const fixture = buildTableFixture();
+		it.each(['table', 'cards'] as const)('%s 模式将文件筛选放在同一位置并显示条数徽标', async (layout) => {
+			const fixture = buildTableFixture({ layout });
 			await fixture.render();
 
+			const board = fixture.container.querySelector('.wn-lore-board-content');
+			const filters = board?.querySelector('.wn-lore-file-tabs');
+			expect(board?.children[0]).toBe(filters);
+			expect(board?.children[1]?.hasClass('wn-lore-board-layout')).toBe(true);
 			const tabs = fixture.container.querySelectorAll('.wn-lore-file-tab');
 			expect(tabs).toHaveLength(3);
 			expect(tabs[0].hasClass('is-active')).toBe(true);
+			expect(tabs.map(tab => tab.getAttribute('aria-pressed'))).toEqual(['true', 'false', 'false']);
 
 			const labels = fixture.container.querySelectorAll('.wn-lore-file-tab-label').map(label => label.textContent);
 			expect(labels).toEqual(['lore.tab-all', '人物', '势力']);
@@ -1375,8 +1380,8 @@ describe('LoreCardPreview', () => {
 			const counts = fixture.container.querySelectorAll('.wn-lore-file-tab-count').map(count => count.textContent);
 			expect(counts).toEqual(['3', '2', '1']);
 
-			const rows = fixture.container.querySelectorAll('.wn-lore-board-group');
-			expect(rows).toHaveLength(3);
+			const rows = fixture.container.querySelectorAll(layout === 'table' ? '.wn-lore-board-group' : '.wn-lore-file-panel');
+			expect(rows).toHaveLength(layout === 'table' ? 3 : 2);
 			expect(rows.every(row => row.hidden === false)).toBe(true);
 		});
 

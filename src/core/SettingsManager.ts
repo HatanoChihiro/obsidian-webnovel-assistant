@@ -12,7 +12,8 @@ import { JsonSnapshotStore } from '../utils/JsonSnapshotStore';
 import { normalizeLoreTemplateHistory } from '../services/LoreTemplateService';
 import { sanitizeWorkbenchSearchHistory } from '../services/WorkbenchFilterIndex';
 import { sanitizeManuscriptPosition, sanitizeWorkManuscriptPositions } from '../services/ImmersiveManuscriptManager';
-import { sanitizeMobileAuxPanelState } from '../services/MobileImmersivePanelGeometry';
+import { sanitizeMobileAuxPanelState, sanitizeMobileCutoutOffset } from '../services/MobileImmersivePanelGeometry';
+import { sanitizeMobileDashboardItems } from '../services/MobileDashboardStats';
 
 /**
  * 验证规则接口（支持嵌套路径）
@@ -95,6 +96,18 @@ export class SettingsManager {
 				fieldName: t('validation.pomodoro-interval'),
 				min: String(VALIDATION_RULES.IMMERSIVE_POMODORO_INTERVAL.min),
 				max: String(VALIDATION_RULES.IMMERSIVE_POMODORO_INTERVAL.max)
+			})
+		},
+		{
+			path: 'immersive.mobileCutoutLeftOffset',
+			validate: (offset) => {
+				const val = Number(offset);
+				return Number.isFinite(val) && val >= VALIDATION_RULES.IMMERSIVE_MOBILE_CUTOUT_OFFSET.min && val <= VALIDATION_RULES.IMMERSIVE_MOBILE_CUTOUT_OFFSET.max;
+			},
+			errorMessage: t('validation.range', {
+				fieldName: t('setting.immersive-mobile-cutout-offset'),
+				min: String(VALIDATION_RULES.IMMERSIVE_MOBILE_CUTOUT_OFFSET.min),
+				max: String(VALIDATION_RULES.IMMERSIVE_MOBILE_CUTOUT_OFFSET.max)
 			})
 		}
 	];
@@ -414,6 +427,11 @@ export class SettingsManager {
 			}
 			migrated.immersive.workManuscriptPositions = sanitizeWorkManuscriptPositions(migrated.immersive.workManuscriptPositions);
 			migrated.immersive.mobileAuxPanel = sanitizeMobileAuxPanelState(migrated.immersive.mobileAuxPanel);
+			migrated.immersive.mobileDashboardItems = sanitizeMobileDashboardItems(migrated.immersive.mobileDashboardItems);
+			if (typeof migrated.immersive.mobileCutoutAvoidance !== 'boolean') {
+				migrated.immersive.mobileCutoutAvoidance = false;
+			}
+			migrated.immersive.mobileCutoutLeftOffset = sanitizeMobileCutoutOffset(migrated.immersive.mobileCutoutLeftOffset);
 		}
 
 		if (oldData && typeof oldData === 'object') {

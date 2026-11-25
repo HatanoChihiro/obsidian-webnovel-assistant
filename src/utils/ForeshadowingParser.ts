@@ -4,6 +4,12 @@ import { ForeshadowingStatus } from '../types/foreshadowing';
 import { escapeRegex } from './validation';
 import { FORESHADOWING_STATUS_MAP, getForeshadowingLabel, getForeshadowingStatusText } from '../i18n/data-keys';
 
+export interface ParsedForeshadowingEntrySpan {
+	entry: ParsedForeshadowingEntry;
+	startPos: number;
+	endPos: number;
+}
+
 export class ForeshadowingParser {
 	/**
 	 * 将伏笔条目格式化为 Markdown 字符串
@@ -214,21 +220,66 @@ export class ForeshadowingParser {
 	}
 
 	/**
-	 * 解析伏笔文件内容为结构化数据
-	 * 统一的解析逻辑，供 View 层调用
+	 * 仅更新单个伏笔块的重要标记，保留原有格式与无关元数据/Markdown。
 	 */
-	static parseEntries(content: string): ParsedForeshadowingEntry[] {
-		const entries: ParsedForeshadowingEntry[] = [];
+	static patchBlockImportance(blockText: string, important: boolean): string {
+		const hasMarker = /<!--\s*wn-important\s*-->/.test(blockText);
+		if (important) {
+			if (hasMarker) return blockText;
+			const eol = blockText.includes('\r\n') ? '\r\n' : '\n';
+			const firstNewline = blockText.indexOf('\n');
+			if (firstNewline === -1) {
+				return `${blockText}${eol}<!-- wn-important -->`;
+			}
+			const headingEnd = firstNewline > 0 && blockText[firstNewline - 1] === '\r' ? firstNewline - 1 : firstNewline;
+			return `${blockText.slice(0, headingEnd)}${eol}<!-- wn-important -->${blockText.slice(headingEnd)}`;
+		}
+		if (!hasMarker) return blockText;
+		let next = blockText
+			.replace(/^[ \t]*<!--\s*wn-important\s*-->[ \t]*\r?\n/gm, '')
+			.replace(/\r?\n[ \t]*<!--\s*wn-important\s*-->[ \t]*$/g, '');
+		next = next.replace(/([ \t]*)<!--\s*wn-important\s*-->([ \t]*)/g, (_match, before: string, after: string) =>
+			before && after ? ' ' : ''
+		);
+		return next;
+	}
 
-		// 按 --- 分割条目
-		const blocks = content.split(/\n---\n/);
+	static matchesRawBlockIgnoringImportance(candidateRaw: string, expectedRaw: string): boolean {
+		return ForeshadowingParser.patchBlockImportance(candidateRaw.trim(), false).replace(/\r\n/g, '\n').trim() ===
+			ForeshadowingParser.patchBlockImportance(expectedRaw.trim(), false).replace(/\r\n/g, '\n').trim();
+	}
 
-		for (const block of blocks) {
-			const trimmed = block.trim();
+	/**
+	 * 解析伏笔文件内容为带原文偏移范围的结构化数据
+	 */
+	static parseEntriesWithSpans(content: string): ParsedForeshadowingEntrySpan[] {
+		const spans: ParsedForeshadowingEntrySpan[] = [];
+
+		// 按 --- 分割条目并保留精确块位置
+		const segments: Array<{ start: number; end: number }> = [];
+		const separatorRegex = /\r?\n---[ \t]*(?:\r?\n|$)/g;
+		let lastIndex = 0;
+		let sepMatch: RegExpExecArray | null;
+		while ((sepMatch = separatorRegex.exec(content)) !== null) {
+			segments.push({ start: lastIndex, end: sepMatch.index });
+			lastIndex = sepMatch.index + sepMatch[0].length;
+		}
+		if (lastIndex <= content.length) {
+			segments.push({ start: lastIndex, end: content.length });
+		}
+
+		for (const segment of segments) {
+			let blockStart = segment.start;
+			let blockEnd = segment.end;
+			while (blockStart < blockEnd && /\s/.test(content[blockStart])) blockStart++;
+			while (blockEnd > blockStart && /\s/.test(content[blockEnd - 1])) blockEnd--;
+			if (blockStart >= blockEnd) continue;
+
+			const trimmed = content.slice(blockStart, blockEnd);
 			if (!trimmed || !trimmed.startsWith('## ')) continue;
 
 			// 解析标题行
-			const titleMatch = trimmed.match(/^## (.*?)$/m);
+			const titleMatch = trimmed.match(/^## ([^\r\n]*)/);
 			if (!titleMatch) continue;
 			
 			const titleText = titleMatch[1].trim();
@@ -252,7 +303,7 @@ export class ForeshadowingParser {
 
 			// 解析所有引用块（支持多条）
 			const contents: { source: string; time: string; text: string }[] = [];
-			const lines = trimmed.split('\n');
+			const lines = trimmed.split(/\r?\n/);
 			let i = 0;
 
 			// 跳过标题行
@@ -332,7 +383,7 @@ export class ForeshadowingParser {
 			}
 
 			// 解析回收信息（支持阶段日志、多章节、单章节及关联原文 quote）
-			const recoveryListMatch = trimmed.match(new RegExp(`\\*\\*(?:回收于|回收於|回收记录|回收記錄|Recovered at|Resolved in|${t('foreshadowing.recovered-at')})\\*\\*：\\n([\\s\\S]*?)(?=\\n\\*\\*|\\n---|\\n## |$)`));
+			const recoveryListMatch = trimmed.match(new RegExp(`\\*\\*(?:回收于|回收於|回收记录|回收記錄|Recovered at|Resolved in|${t('foreshadowing.recovered-at')})\\*\\*：\\r?\\n([\\s\\S]*?)(?=\\r?\\n\\*\\*|\\r?\\n---|\\r?\\n## |$)`));
 			let recoveryLogs: ForeshadowingRecoveryLog[] | undefined;
 			let recoveryFiles: string[] | undefined;
 			let recoveredAts: string[] | undefined;
@@ -345,7 +396,7 @@ export class ForeshadowingParser {
 				recoveryFiles = [];
 				recoveredAts = [];
 
-				const rawLines = textBlock.split('\n');
+				const rawLines = textBlock.split(/\r?\n/);
 				let currentLog: ForeshadowingRecoveryLog | null = null;
 				const quoteBuffer: string[] = [];
 
@@ -433,10 +484,22 @@ export class ForeshadowingParser {
 			const important = /<!--\s*wn-important\s*-->/.test(trimmed);
 
 			if (description) {
-				entries.push({ sourceFile, createdAt, contents, description, tags, status, recoveryLogs, recoveryFiles, recoveredAts, recoveryFile, recoveredAt, important });
+				spans.push({
+					entry: { sourceFile, createdAt, contents, description, tags, status, recoveryLogs, recoveryFiles, recoveredAts, recoveryFile, recoveredAt, rawBlock: trimmed, important },
+					startPos: blockStart,
+					endPos: blockEnd
+				});
 			}
 		}
 
-		return entries;
+		return spans;
+	}
+
+	/**
+	 * 解析伏笔文件内容为结构化数据
+	 * 统一的解析逻辑，供 View 层调用
+	 */
+	static parseEntries(content: string): ParsedForeshadowingEntry[] {
+		return ForeshadowingParser.parseEntriesWithSpans(content).map(span => span.entry);
 	}
 }

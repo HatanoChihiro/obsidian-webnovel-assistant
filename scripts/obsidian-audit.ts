@@ -83,6 +83,12 @@ project.getSourceFiles().forEach(sourceFile => {
 	// 1. Check for 'document' usage (should use 'activeDocument')
 	const identifiers = sourceFile.getDescendantsOfKind(SyntaxKind.Identifier);
 	identifiers.forEach(identifier => {
+		// Include type queries: official source review also flags `typeof globalThis`.
+		if (identifier.getText() === 'globalThis') {
+			console.error(`❌ [Error] Avoid 'globalThis' in ${filePath}:${identifier.getStartLineNumber()}. Use the owning window, 'window', or 'activeWindow' for popout compatibility.`);
+			hasErrors = true;
+		}
+
 		if (identifier.getText() === 'document') {
 			// Allow activeDocument, Document, document.createElement? No, just flag 'document'
 			const parent = identifier.getParent();

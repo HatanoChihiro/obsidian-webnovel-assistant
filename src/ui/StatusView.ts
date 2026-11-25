@@ -17,7 +17,7 @@ import type { TaskManager } from '../services/TaskManager';
 import type { HomepageManager } from '../services/HomepageManager';
 import type { CharacterManager } from '../services/CharacterManager';
 import type { ForeshadowingManager } from '../services/ForeshadowingManager';
-import type { TimelineManager, ChapterTimelineNode } from '../services/TimelineManager';
+import { getTimelineNodeDisplayTime, type TimelineManager, type ChapterTimelineNode } from '../services/TimelineManager';
 import type { StatisticsManager } from '../services/StatisticsManager';
 import type { WritingJourneyService } from '../services/WritingJourneyService';
 import type { ImmersiveModeManager } from './ImmersiveModeManager';
@@ -120,12 +120,10 @@ export interface WritingStatusViewPlugin
 	taskManager?: StatusViewTaskManager;
 	writingJourneyService?: Pick<WritingJourneyService, 'changeChapterStatus'>;
 	immersiveModeManager?: Pick<ImmersiveModeManager, 'getMainEditorLeaf'> & {
-		isMobileImmersiveSessionActive?: () => boolean;
-		isMobileDataIsolationActive?: () => boolean;
+		isMobileDataIsolationActive: () => boolean;
 		getActiveSessionMainLeaf?: () => WorkspaceLeaf | null;
 		getDataScopedMainLeaf?: () => WorkspaceLeaf | null;
-		getActiveSessionMainFile?: () => TFile | null;
-		getDataScopedMainFile?: () => TFile | null;
+		getDataScopedMainFile: () => TFile | null;
 	};
 }
 
@@ -273,8 +271,8 @@ export class WritingStatusView extends ItemView {
 
 	private getImmersiveMainTargetFile(): TFile | null {
 		const imm = this.plugin.immersiveModeManager;
-		if (imm?.isMobileDataIsolationActive?.() ?? imm?.isMobileImmersiveSessionActive?.()) {
-			const explicitFile = imm?.getDataScopedMainFile?.() ?? imm?.getActiveSessionMainFile?.();
+		if (imm?.isMobileDataIsolationActive()) {
+			const explicitFile = imm?.getDataScopedMainFile();
 			if (explicitFile instanceof TFile) return explicitFile;
 		}
 		const mainLeaf = imm?.getDataScopedMainLeaf?.() ?? imm?.getActiveSessionMainLeaf?.() ?? imm?.getMainEditorLeaf?.();
@@ -855,7 +853,7 @@ export class WritingStatusView extends ItemView {
 		let activeFile: TFile | null = null;
 		let activeMarkdown: MarkdownView | null = null;
 		const imm = this.plugin.immersiveModeManager;
-		const isMobileImmersive = Boolean(imm?.isMobileDataIsolationActive?.() ?? imm?.isMobileImmersiveSessionActive?.());
+		const isMobileImmersive = imm?.isMobileDataIsolationActive() ?? false;
 		if (this.isChapterOnlyMode() || isMobileImmersive) {
 			activeFile = this.getImmersiveMainTargetFile();
 		} else {
@@ -1561,7 +1559,8 @@ export class WritingStatusView extends ItemView {
 
 			for (const node of timelineNodes) {
 				const nodeGroupEl = timelineDiv.createDiv('wn-chapter-timeline-node');
-				const nodeTitle = node.type ? `${node.time} (${node.type})` : node.time;
+				const displayTime = getTimelineNodeDisplayTime(node);
+				const nodeTitle = node.type ? `${displayTime} (${node.type})` : displayTime;
 				nodeGroupEl.createDiv({ text: nodeTitle, cls: 'wn-chapter-timeline-node-time' });
 
 				for (const item of node.items) {

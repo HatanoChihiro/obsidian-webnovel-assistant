@@ -14,10 +14,8 @@ export interface CurrentBookContextPlugin extends FindBookRootPlugin {
 		getHomepageFilePath?: () => string;
 	};
 	immersiveModeManager?: {
-		isMobileImmersiveSessionActive?: () => boolean;
-		isMobileDataIsolationActive?: () => boolean;
-		getActiveSessionMainFile?: () => TFile | null;
-		getDataScopedMainFile?: () => TFile | null;
+		isMobileDataIsolationActive: () => boolean;
+		getDataScopedMainFile: () => TFile | null;
 	};
 }
 
@@ -89,7 +87,7 @@ export function findBookRoot(app: App, plugin: FindBookRootPlugin, file: TFile |
 	if (workspaceFolders.length > 0) {
 		const isFileInWorkspace = workspaceFolders.some(ws => {
 			const normWs = ws.replace(/^\/+|\/+$/g, '');
-			return folder.path === normWs || folder.path.startsWith(normWs + '/');
+			return !normWs || folder.path === normWs || folder.path.startsWith(normWs + '/');
 		});
 		// 工作区之外的文件一律不当作作品处理！
 		if (!isFileInWorkspace) {
@@ -213,8 +211,8 @@ export function getCurrentBookContext(
 	options?: CurrentBookContextOptions
 ): string | null {
 	const imm = plugin.immersiveModeManager;
-	if (imm?.isMobileDataIsolationActive?.() ?? imm?.isMobileImmersiveSessionActive?.()) {
-		const mainFile = imm?.getDataScopedMainFile?.() ?? imm?.getActiveSessionMainFile?.() ?? null;
+	if (imm?.isMobileDataIsolationActive()) {
+		const mainFile = imm?.getDataScopedMainFile() ?? null;
 		if (!mainFile) return null;
 		const homepagePath = plugin.homepageManager?.getHomepageFilePath?.();
 		const isHomepage = (homepagePath && mainFile.path === homepagePath) || mainFile.name === '创作主页.md';

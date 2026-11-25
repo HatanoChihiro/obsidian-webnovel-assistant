@@ -22,6 +22,12 @@ body .webnovel-immersive-note-textarea,
 }
 
 
+.wn-workbench-container::-webkit-scrollbar:horizontal,
+.wn-workbench-container ::-webkit-scrollbar:horizontal {
+	display: none;
+}
+
+
 /* ========== Workbench Keyword Filter Bar ========== */
 .wn-workbench-filter-bar {
 	display: flex;
@@ -233,6 +239,24 @@ body .wn-workbench-filter-tag-search input[type="search"].wn-workbench-filter-in
 	gap: 4px;
 	min-width: 0;
 	max-width: 100%;
+}
+
+body.is-phone .wn-workbench-filter-bar-lore .wn-workbench-filter-tag-search {
+	flex-wrap: nowrap;
+}
+
+body.is-phone .wn-workbench-filter-bar-lore input[type="search"].wn-workbench-filter-input {
+	flex: 1 0 3em;
+}
+
+body.is-phone .wn-workbench-filter-bar-lore .wn-workbench-filter-tags {
+	flex-wrap: nowrap;
+	max-width: 50%;
+	overflow-x: auto;
+}
+
+body.is-phone .wn-workbench-filter-bar-lore .wn-workbench-filter-tag {
+	flex-shrink: 0;
 }
 
 .wn-workbench-filter-tag {

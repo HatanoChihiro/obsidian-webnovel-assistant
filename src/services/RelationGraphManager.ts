@@ -77,6 +77,61 @@ export interface GraphData {
 	edges: GraphEdge[];
 }
 
+/**
+ * Update graph data while keeping the layout and interaction references of existing nodes.
+ */
+export function reconcileGraphData(current: GraphData, incoming: GraphData, width: number, height: number): {
+	nodesChanged: boolean;
+	edgesChanged: boolean;
+	physicsChanged: boolean;
+} {
+	const previousNodes = new Map(current.nodes.map(node => [node.id, node]));
+	const cx = width > 0 ? width / 2 : 150;
+	const cy = height > 0 ? height / 2 : 150;
+	const radius = Math.min(cx, cy) * 0.8;
+	let nodesChanged = current.nodes.length !== incoming.nodes.length;
+	let physicsChanged = nodesChanged;
+
+	const nodes = incoming.nodes.map((next, index) => {
+		const node = previousNodes.get(next.id);
+		if (!node) {
+			const angle = index / incoming.nodes.length * Math.PI * 2;
+			next.x = cx + radius * Math.cos(angle);
+			next.y = cy + radius * Math.sin(angle);
+			nodesChanged = true;
+			physicsChanged = true;
+			return next;
+		}
+
+		const roleChanged = node.isProtagonist !== next.isProtagonist || node.nodeType !== next.nodeType;
+		const movedInOrder = current.nodes[index] !== node;
+		physicsChanged ||= roleChanged || movedInOrder;
+		nodesChanged ||= movedInOrder;
+		if (roleChanged || node.file !== next.file || node.heading !== next.heading || node.sourcePath !== next.sourcePath ||
+			(node.aliases?.length ?? 0) !== (next.aliases?.length ?? 0) ||
+			node.aliases?.some((alias, i) => alias !== next.aliases?.[i])) {
+			node.file = next.file;
+			node.sourcePath = next.sourcePath;
+			node.heading = next.heading;
+			node.isProtagonist = next.isProtagonist;
+			node.nodeType = next.nodeType;
+			node.aliases = next.aliases;
+			nodesChanged = true;
+		}
+		return node;
+	});
+
+	const linksChanged = current.edges.length !== incoming.edges.length || current.edges.some((edge, i) =>
+		edge.source !== incoming.edges[i].source || edge.target !== incoming.edges[i].target
+	);
+	const edgesChanged = linksChanged || current.edges.some((edge, i) =>
+		edge.label !== incoming.edges[i].label || edge.type !== incoming.edges[i].type
+	);
+	if (nodesChanged) current.nodes = nodes;
+	if (edgesChanged) current.edges = incoming.edges;
+	return { nodesChanged, edgesChanged, physicsChanged: physicsChanged || linksChanged };
+}
+
 // ==========================================
 // 常量
 // ==========================================

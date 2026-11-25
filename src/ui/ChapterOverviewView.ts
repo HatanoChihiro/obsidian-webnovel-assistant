@@ -116,10 +116,10 @@ export class ChapterOverviewView extends ItemView {
 
         this.registerEvent(this.app.workspace.on('active-leaf-change', (leaf) => {
             const imm = this.plugin.immersiveModeManager;
-            const isMobileImmersive = Boolean(imm?.isMobileDataIsolationActive?.() ?? imm?.isMobileImmersiveSessionActive?.());
+            const isMobileImmersive = imm?.isMobileDataIsolationActive() ?? false;
             if (!isMobileImmersive && (!leaf || leaf.view.getViewType() !== 'markdown')) return;
             const file = isMobileImmersive
-                ? (imm?.getDataScopedMainFile?.() ?? imm?.getActiveSessionMainFile?.() ?? null)
+                ? (imm?.getDataScopedMainFile() ?? null)
                 : this.app.workspace.getActiveFile();
             if (!file) return;
 

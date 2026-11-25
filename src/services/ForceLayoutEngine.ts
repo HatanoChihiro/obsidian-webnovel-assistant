@@ -66,16 +66,22 @@ export class ForceLayoutEngine {
 	public readonly nodes: LayoutNode[];
 	public readonly edges: LayoutEdge[];
 	private simulation: d3.Simulation<LayoutNode, LayoutEdge>;
+	private degreeMap: Map<string, number>;
 
 	constructor(nodes: LayoutNode[], edges: LayoutEdge[], public width: number, public height: number) {
-		this.nodes = nodes;
-		// 复制 edges 因为 d3 会直接把 string source/target 修改为对象引用
-		this.edges = edges.map(e => ({ ...e }));
+		// 浅拷贝节点数组避免外部数组清空影响引擎，同时保留节点对象引用
+		this.nodes = [...nodes];
+		// 复制 edges 并规范化端点为字符串 ID，避免 d3 复用旧节点引用
+		this.edges = edges.map(e => ({
+			...e,
+			source: typeof e.source === 'string' ? e.source : e.source.id,
+			target: typeof e.target === 'string' ? e.target : e.target.id
+		}));
 
 		// 同步初始状态与主角中心锁定
 		this.updateProtagonistPositions();
 
-		const degreeMap = this.calculateDegreeMap(this.edges);
+		this.degreeMap = this.calculateDegreeMap(this.edges);
 
 		// 构建 D3 物理引擎
 		this.simulation = d3.forceSimulation<LayoutNode>(this.nodes)
@@ -94,13 +100,13 @@ export class ForceLayoutEngine {
 			.force('gravityX', d3.forceX<LayoutNode>(width / 2).strength((d: LayoutNode) => {
 				const isProtagonist = d.isProtagonist || Boolean(d.nodeType && (d.nodeType.includes('主角') || d.nodeType.toLowerCase().includes('protagonist')));
 				if (isProtagonist) return PHYSICS_CONFIG.PROTAGONIST_GRAVITY;
-				if ((degreeMap.get(d.id) || 0) === 0) return PHYSICS_CONFIG.ISOLATED_NODE_GRAVITY; // 孤立节点施加向心力
+				if ((this.degreeMap.get(d.id) || 0) === 0) return PHYSICS_CONFIG.ISOLATED_NODE_GRAVITY; // 孤立节点施加向心力
 				return PHYSICS_CONFIG.OTHER_NODE_GRAVITY; // 其他节点微弱向心力
 			}))
 			.force('gravityY', d3.forceY<LayoutNode>(height / 2).strength((d: LayoutNode) => {
 				const isProtagonist = d.isProtagonist || Boolean(d.nodeType && (d.nodeType.includes('主角') || d.nodeType.toLowerCase().includes('protagonist')));
 				if (isProtagonist) return PHYSICS_CONFIG.PROTAGONIST_GRAVITY;
-				if ((degreeMap.get(d.id) || 0) === 0) return PHYSICS_CONFIG.ISOLATED_NODE_GRAVITY;
+				if ((this.degreeMap.get(d.id) || 0) === 0) return PHYSICS_CONFIG.ISOLATED_NODE_GRAVITY;
 				return PHYSICS_CONFIG.OTHER_NODE_GRAVITY;
 			}))
 			// 中心引力：防止整体飘走
@@ -224,16 +230,44 @@ export class ForceLayoutEngine {
 	}
 
 	/**
-	 * 热更新数据，用于静默刷新（保持原有节点物理坐标）
+	 * 热更新数据，用于静默刷新（保持原有节点物理坐标，不重新加热已收敛引擎）
 	 */
 	public updateData(nodes: LayoutNode[], edges: LayoutEdge[]): void {
+		// 先拷贝输入集合，避免传入 this.nodes / this.edges 时被 length = 0 清空
+		const nextNodes = nodes === this.nodes ? [...nodes] : nodes;
+		const nextEdges: LayoutEdge[] = edges.map(e => ({
+			...e,
+			source: typeof e.source === 'string' ? e.source : e.source.id,
+			target: typeof e.target === 'string' ? e.target : e.target.id
+		}));
+
+		// 同步固定锚点以防止 simulation.nodes() 将节点拉回旧 fx/fy
+		for (const n of nextNodes) {
+			if (n.pinned) {
+				n.fx = n.x;
+				n.fy = n.y;
+			} else if (n.fx != null || n.fy != null) {
+				const isProtagonist = n.isProtagonist || Boolean(n.nodeType && (n.nodeType.includes('主角') || n.nodeType.toLowerCase().includes('protagonist')));
+				if (isProtagonist) {
+					n.fx = n.x;
+					n.fy = n.y;
+				} else {
+					n.fx = null;
+					n.fy = null;
+				}
+			}
+		}
+
 		// 清空并重新推入数据以保持对内部数组的引用
 		this.nodes.length = 0;
-		this.nodes.push(...nodes);
+		this.nodes.push(...nextNodes);
 		this.edges.length = 0;
-		this.edges.push(...edges.map(e => ({ ...e })));
+		this.edges.push(...nextEdges);
 
-		// 通知 D3 引擎数据已变化
+		// 刷新节点度数映射，使 gravityX / gravityY 重新初始化时读取最新拓扑
+		this.degreeMap = this.calculateDegreeMap(this.edges);
+
+		// 通知 D3 引擎数据已变化（不改变 alpha，不重启定时器）
 		this.simulation.nodes(this.nodes);
 		const linkForce = this.simulation.force<d3.ForceLink<LayoutNode, LayoutEdge>>('link');
 		if (linkForce) {

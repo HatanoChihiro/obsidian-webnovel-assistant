@@ -9,6 +9,13 @@ import { ImmersiveManuscriptController } from '../src/ui/ImmersiveManuscriptCont
 import { ImmersiveModeManager } from '../src/ui/ImmersiveModeManager';
 import { preserveTypewriterViewport } from '../src/editor/TypewriterExtension';
 import { Transaction } from '@codemirror/state';
+import type { EditorView } from '@codemirror/view';
+
+type MeasureRequest<T = unknown> = {
+	read(view: EditorView): T;
+	write?(measure: T, view: EditorView): void;
+	key?: unknown;
+};
 
 vi.mock('obsidian', () => {
 	class MockTFolder {
@@ -66,7 +73,9 @@ vi.mock('obsidian', () => {
 			addButton() { return this; }
 		},
 		ToggleComponent: class {
+			toggleEl = { setAttribute: vi.fn() };
 			setValue() { return this; }
+			getValue() { return false; }
 			setTooltip() { return this; }
 			onChange() { return this; }
 		},
@@ -492,7 +501,7 @@ describe('ImmersiveManuscriptController & Lifecycle Integration', () => {
 			contentDOM,
 			composing: false,
 			state: { selection: { main: { head: 0, empty: true } } },
-			requestMeasure: vi.fn(),
+			requestMeasure: vi.fn<(request?: MeasureRequest<unknown>) => void>(),
 			dispatch: vi.fn(),
 			focus: vi.fn(),
 			coordsAtPos: vi.fn(() => ({ top: 120, bottom: 140, left: 10, right: 20 }))
@@ -957,6 +966,343 @@ describe('ImmersiveManuscriptController & Lifecycle Integration', () => {
 		expect(host.cm.dispatch).toHaveBeenLastCalledWith({ annotations: Transaction.userEvent.of('select') });
 
 		controller.unmountSync();
+	});
+
+	it('keeps a clicked preview anchor after native scroll and deferred line-height measurement', async () => {
+		vi.useFakeTimers();
+		const first = createFile('Books/StarSea/第1章.md', 'Fictional first chapter');
+		const second = createFile('Books/StarSea/第2章.md', 'Fictional second chapter');
+		const host = createFakeMarkdownLeaf(first);
+		const controller = new ImmersiveManuscriptController({ app: mockApp, manuscriptManager });
+		try {
+			expect(controller.mount(host.leaf, first)).toBe(true);
+			const scroller = controller.getScrollerElement()!;
+			let caretDocumentY = 800;
+			host.cm.coordsAtPos.mockImplementation(() => ({
+				top: caretDocumentY - scroller.scrollTop,
+				bottom: caretDocumentY - scroller.scrollTop + 20,
+				left: 10,
+				right: 20
+			}));
+			host.cm.requestMeasure.mockImplementation(request => {
+				if (!request) return;
+				globalThis.setTimeout(() => {
+					const cm = host.cm as unknown as EditorView;
+					request.write?.(request.read(cm), cm);
+				}, 0);
+			});
+			await controller.requestChapterSwitch({
+				file: second,
+				cursorLine: 0,
+				cursorCh: 4,
+				scrollMode: 'click-anchor',
+				clickAnchor: { clientY: 160, cardTopDelta: 0 }
+			});
+			expect(caretDocumentY - scroller.scrollTop + 10).toBe(160);
+			// The native editor replaces estimated wrapping heights after the first alignment.
+			caretDocumentY += 564;
+			scroller.scrollTop += 80;
+			await vi.advanceTimersByTimeAsync(48);
+			expect(caretDocumentY - scroller.scrollTop + 10).toBeCloseTo(160, 1);
+			expect(host.view.editor.getCursor()).toEqual({ line: 0, ch: 4 });
+		} finally {
+			controller.unmountSync();
+			vi.useRealTimers();
+		}
+	});
+
+	it('retries temporarily unavailable click-anchor coordinates, avoids layout reads in write, settles within a bounded pass count, and updates final position memory', async () => {
+		vi.useFakeTimers();
+		const first = createFile('Books/StarSea/第1章.md', 'Fictional first chapter');
+		const second = createFile('Books/StarSea/第2章.md', 'Fictional second chapter');
+		const host = createFakeMarkdownLeaf(first);
+		const controller = new ImmersiveManuscriptController({ app: mockApp, manuscriptManager });
+		try {
+			expect(controller.mount(host.leaf, first)).toBe(true);
+			const scroller = controller.getScrollerElement()!;
+			const secondCard = host.viewContentEl.querySelectorAll('.wn-manuscript-card').find(c => c.dataset.chapterPath === second.path)!;
+			secondCard.offsetTop = 500;
+
+			let scrollTopValue = scroller.scrollTop;
+			let inWritePhase = false;
+			let readLayoutDuringWrite = false;
+			Object.defineProperty(scroller, 'scrollTop', {
+				configurable: true,
+				get: () => {
+					if (inWritePhase) readLayoutDuringWrite = true;
+					return scrollTopValue;
+				},
+				set: (val: number) => {
+					scrollTopValue = val;
+				}
+			});
+
+			let caretDocumentY = 1400;
+			let coordsCalls = 0;
+			let measurePasses = 0;
+			host.cm.coordsAtPos.mockImplementation(() => {
+				if (inWritePhase) readLayoutDuringWrite = true;
+				coordsCalls++;
+				// Unmeasurable during immediate alignment and the first deferred measure pass.
+				if (coordsCalls <= 2) return null as unknown as { top: number; bottom: number; left: number; right: number };
+				return {
+					top: caretDocumentY - scrollTopValue,
+					bottom: caretDocumentY - scrollTopValue + 20,
+					left: 10,
+					right: 20
+				};
+			});
+			host.cm.requestMeasure.mockImplementation(request => {
+				if (!request) return;
+				globalThis.setTimeout(() => {
+					measurePasses++;
+					const cm = host.cm as unknown as EditorView;
+					const measured = request.read(cm);
+					inWritePhase = true;
+					try {
+						request.write?.(measured, cm);
+					} finally {
+						inWritePhase = false;
+					}
+				}, 0);
+			});
+
+			await controller.requestChapterSwitch({
+				file: second,
+				cursorLine: 0,
+				cursorCh: 4,
+				scrollMode: 'click-anchor',
+				clickAnchor: { clientY: 160, cardTopDelta: 0 }
+			});
+
+			await vi.advanceTimersByTimeAsync(100);
+			expect(readLayoutDuringWrite).toBe(false);
+			expect(caretDocumentY - scrollTopValue + 10).toBeCloseTo(160, 1);
+			expect(measurePasses).toBeGreaterThanOrEqual(3);
+			expect(measurePasses).toBeLessThanOrEqual(8);
+
+			// Once settled, further timer advances must not schedule additional passes.
+			const settledPasses = measurePasses;
+			await vi.advanceTimersByTimeAsync(200);
+			expect(measurePasses).toBe(settledPasses);
+
+			// Position memory reflects the final stabilized viewport scrollTop (1250 - card.offsetTop 500 = 750).
+			const saved = manuscriptManager.getValidatedLastPosition()?.position;
+			expect(saved?.filePath).toBe(second.path);
+			expect(saved?.chapterRelativeScroll).toBeCloseTo(scrollTopValue - secondCard.offsetTop, 1);
+
+			// Permanently unmeasurable coordinates still terminate within the bounded pass limit.
+			measurePasses = 0;
+			host.cm.coordsAtPos.mockImplementation(() => null as unknown as { top: number; bottom: number; left: number; right: number });
+			await controller.requestChapterSwitch({
+				file: first,
+				cursorLine: 0,
+				cursorCh: 1,
+				scrollMode: 'click-anchor',
+				clickAnchor: { clientY: 160, cardTopDelta: 0 }
+			});
+			await vi.advanceTimersByTimeAsync(200);
+			expect(measurePasses).toBe(8);
+			await vi.advanceTimersByTimeAsync(200);
+			expect(measurePasses).toBe(8);
+		} finally {
+			controller.unmountSync();
+			vi.useRealTimers();
+		}
+	});
+
+	it('cancels deferred click-anchor writes on user interaction, re-navigation, external target change, and unmount even when queued measure callbacks fire late', async () => {
+		const first = createFile('Books/StarSea/第1章.md', 'Fictional first chapter');
+		const second = createFile('Books/StarSea/第2章.md', 'Fictional second chapter');
+		const third = createFile('Books/StarSea/第3章.md', 'Fictional third chapter');
+		const host = createFakeMarkdownLeaf(first);
+		const controller = new ImmersiveManuscriptController({ app: mockApp, manuscriptManager });
+		try {
+			expect(controller.mount(host.leaf, first)).toBe(true);
+			const scroller = controller.getScrollerElement()!;
+			const queuedMeasures: Array<MeasureRequest<unknown>> = [];
+			const flushQueuedMeasures = () => {
+				const batch = queuedMeasures.splice(0, queuedMeasures.length);
+				const cm = host.cm as unknown as EditorView;
+				for (const req of batch) {
+					req.write?.(req.read(cm), cm);
+				}
+			};
+
+			let caretDocumentY = 800;
+			host.cm.coordsAtPos.mockImplementation(() => ({
+				top: caretDocumentY - scroller.scrollTop,
+				bottom: caretDocumentY - scroller.scrollTop + 20,
+				left: 10,
+				right: 20
+			}));
+			host.cm.requestMeasure.mockImplementation(request => {
+				if (request) queuedMeasures.push(request);
+			});
+
+			// 1. User wheel cancels stabilization; late queued measure must not overwrite scrollTop.
+			await controller.requestChapterSwitch({
+				file: second,
+				cursorLine: 0,
+				cursorCh: 3,
+				scrollMode: 'click-anchor',
+				clickAnchor: { clientY: 160, cardTopDelta: 0 }
+			});
+			expect(queuedMeasures.length).toBe(1);
+			caretDocumentY += 400;
+			(scroller as unknown as FakeEl).dispatchEvent('wheel');
+			scroller.scrollTop = 910;
+			flushQueuedMeasures();
+			expect(scroller.scrollTop).toBe(910);
+
+			// 2. User typing (beforeinput) cancels stabilization; late queued measure must not write scrollTop.
+			await controller.requestChapterSwitch({
+				file: first,
+				cursorLine: 0,
+				cursorCh: 2,
+				scrollMode: 'click-anchor',
+				clickAnchor: { clientY: 160, cardTopDelta: 0 }
+			});
+			expect(queuedMeasures.length).toBe(1);
+			caretDocumentY += 350;
+			host.cm.contentDOM.dispatchEvent('beforeinput');
+			scroller.scrollTop = 777;
+			flushQueuedMeasures();
+			expect(scroller.scrollTop).toBe(777);
+
+			// 3. Re-navigation invalidates old queued measure so it cannot pull back the new target.
+			await controller.requestChapterSwitch({
+				file: second,
+				cursorLine: 0,
+				cursorCh: 1,
+				scrollMode: 'click-anchor',
+				clickAnchor: { clientY: 160, cardTopDelta: 0 }
+			});
+			const staleRequest = queuedMeasures.shift()!;
+			await controller.requestChapterSwitch({
+				file: third,
+				scrollMode: 'chapter-start'
+			});
+			scroller.scrollTop = 2100;
+			caretDocumentY = 500;
+			const cm = host.cm as unknown as EditorView;
+			staleRequest.write?.(staleRequest.read(cm), cm);
+			expect(scroller.scrollTop).toBe(2100);
+
+			// 4. External file change or selection change invalidates queued measure without writing scrollTop.
+			queuedMeasures.length = 0;
+			await controller.requestChapterSwitch({
+				file: second,
+				cursorLine: 0,
+				cursorCh: 4,
+				scrollMode: 'click-anchor',
+				clickAnchor: { clientY: 160, cardTopDelta: 0 }
+			});
+			expect(queuedMeasures.length).toBe(1);
+			host.view.file = third;
+			caretDocumentY = 1800;
+			scroller.scrollTop = 1234;
+			flushQueuedMeasures();
+			expect(scroller.scrollTop).toBe(1234);
+
+			// Sync back to second, test cursor/selection change invalidation, then unmount invalidation.
+			host.view.file = second;
+			await controller.syncWithActiveChapter(second);
+			await controller.requestChapterSwitch({
+				file: first,
+				cursorLine: 0,
+				cursorCh: 2,
+				scrollMode: 'click-anchor',
+				clickAnchor: { clientY: 160, cardTopDelta: 0 }
+			});
+			expect(queuedMeasures.length).toBe(1);
+			host.view.editor.setCursor({ line: 0, ch: 6 });
+			caretDocumentY = 2200;
+			scroller.scrollTop = 888;
+			flushQueuedMeasures();
+			expect(scroller.scrollTop).toBe(888);
+
+			await controller.requestChapterSwitch({
+				file: second,
+				cursorLine: 0,
+				cursorCh: 2,
+				scrollMode: 'click-anchor',
+				clickAnchor: { clientY: 160, cardTopDelta: 0 }
+			});
+			expect(queuedMeasures.length).toBe(1);
+			const unmountedRequest = queuedMeasures.shift()!;
+			scroller.scrollTop = 640;
+			caretDocumentY = 2600;
+			controller.unmountSync();
+			unmountedRequest.write?.(unmountedRequest.read(cm), cm);
+			expect(scroller.scrollTop).toBe(640);
+		} finally {
+			controller.unmountSync();
+		}
+	});
+
+	it('does not schedule or fight click-anchor stabilization when manuscript typewriter is active', async () => {
+		vi.useFakeTimers();
+		const first = createFile('Books/StarSea/第1章.md', 'Fictional first chapter');
+		const second = createFile('Books/StarSea/第2章.md', 'Fictional second chapter');
+		const host = createFakeMarkdownLeaf(first);
+		const controller = new ImmersiveManuscriptController({ app: mockApp, manuscriptManager });
+		try {
+			expect(controller.mount(host.leaf, first)).toBe(true);
+			const scroller = controller.getScrollerElement()!;
+			let caretDocumentY = 800;
+			const scheduledMeasureRequests: Array<MeasureRequest<unknown>> = [];
+			host.cm.coordsAtPos.mockImplementation(() => ({
+				top: caretDocumentY - scroller.scrollTop,
+				bottom: caretDocumentY - scroller.scrollTop + 20,
+				left: 10,
+				right: 20
+			}));
+			host.cm.requestMeasure.mockImplementation(request => {
+				if (!request) return;
+				scheduledMeasureRequests.push(request);
+				globalThis.setTimeout(() => {
+					const cm = host.cm as unknown as EditorView;
+					request.write?.(request.read(cm), cm);
+				}, 0);
+			});
+
+			// 1. Typewriter already active before switch -> skips click-anchor stabilization and preserves select resume.
+			scroller.classList.add('wn-manuscript-typewriter-active');
+			await controller.requestChapterSwitch({
+				file: second,
+				cursorLine: 0,
+				cursorCh: 4,
+				scrollMode: 'click-anchor',
+				clickAnchor: { clientY: 160, cardTopDelta: 0 }
+			});
+			expect(scheduledMeasureRequests.length).toBe(0);
+			expect(host.cm.dispatch).toHaveBeenLastCalledWith({ annotations: Transaction.userEvent.of('select') });
+			// Simulate typewriter centering moving the viewport afterward.
+			scroller.scrollTop = 450;
+			caretDocumentY = 800;
+			await vi.advanceTimersByTimeAsync(48);
+			expect(scroller.scrollTop).toBe(450);
+
+			// 2. Typewriter enabled mid-flight cancels pending stabilization without overwriting scrollTop.
+			scroller.classList.remove('wn-manuscript-typewriter-active');
+			await controller.requestChapterSwitch({
+				file: first,
+				cursorLine: 0,
+				cursorCh: 2,
+				scrollMode: 'click-anchor',
+				clickAnchor: { clientY: 160, cardTopDelta: 0 }
+			});
+			expect(scheduledMeasureRequests.length).toBe(1);
+			scroller.classList.add('wn-manuscript-typewriter-active');
+			caretDocumentY += 500;
+			scroller.scrollTop = 520;
+			await vi.advanceTimersByTimeAsync(48);
+			expect(scroller.scrollTop).toBe(520);
+		} finally {
+			controller.unmountSync();
+			vi.useRealTimers();
+		}
 	});
 
 	it('activates a newly created chapter at its body and keeps it active after the queued chapter-list refresh', async () => {

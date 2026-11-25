@@ -529,6 +529,7 @@ describe('SettingsManager', () => {
 		it('defaults manuscriptModeEnabled to false for legacy settings and preserves existing values', async () => {
 			const legacy = cloneDefaults();
 			delete (legacy.immersive as Record<string, unknown>).manuscriptModeEnabled;
+			delete (legacy.immersive as Record<string, unknown>).immersiveShowManuscriptControl;
 			delete (legacy.immersive as Record<string, unknown>).lastManuscriptPosition;
 			delete (legacy.immersive as Record<string, unknown>).workManuscriptPositions;
 
@@ -540,6 +541,7 @@ describe('SettingsManager', () => {
 			const loaded = await manager.loadSettings();
 
 			expect(loaded.immersive.manuscriptModeEnabled).toBe(false);
+			expect(loaded.immersive.immersiveShowManuscriptControl).toBe(true);
 		});
 
 		it('sanitizes invalid persisted manuscript paths and cursor/scroll numbers on load', async () => {
@@ -660,6 +662,70 @@ describe('SettingsManager', () => {
 				height: 310
 			});
 		});
+
+		it('sanitizes mobileDashboardItems without truncating synced selections on load or save', async () => {
+			const raw = cloneDefaults() as unknown as Record<string, unknown>;
+			const rawImmersive = (raw.immersive ?? {}) as Record<string, unknown>;
+			rawImmersive.immersiveShowTotalTime = true;
+			rawImmersive.immersiveShowFocusTime = true;
+			rawImmersive.immersiveShowSlackTime = true;
+			rawImmersive.immersiveShowChapterProgress = true;
+			rawImmersive.immersiveShowDailyProgress = true;
+			rawImmersive.immersiveShowTaskProgress = true;
+			rawImmersive.immersiveShowSessionWords = true;
+			rawImmersive.mobileDashboardItems = [
+				'sessionSpeed',
+				'invalid-key',
+				'totalTime',
+				'focusTime',
+				'totalTime',
+				'slackTime',
+				'chapterProgress',
+				'currentTime'
+			];
+
+			const saveData = vi.fn().mockResolvedValue(undefined);
+			const plugin = {
+				loadData: vi.fn().mockResolvedValue(raw),
+				saveData
+			} as never;
+			const manager = new SettingsManager(plugin, cloneDefaults());
+			const loaded = await manager.loadSettings();
+
+			const expected = [
+				'totalTime',
+				'focusTime',
+				'slackTime',
+				'chapterProgress',
+				'sessionSpeed',
+				'currentTime'
+			];
+			expect(loaded.immersive.mobileDashboardItems).toEqual(expected);
+
+			loaded.defaultGoal = DEFAULT_SETTINGS.defaultGoal + 1;
+			await manager.saveSettings();
+			await manager.flush();
+			expect(saveData.mock.calls.at(-1)?.[0]).toHaveProperty('immersive.mobileDashboardItems', expected);
+			// Desktop 7-toggle state remains completely untouched
+			expect(loaded.immersive.immersiveShowTotalTime).toBe(true);
+			expect(loaded.immersive.immersiveShowDailyProgress).toBe(true);
+			expect(loaded.immersive.immersiveShowTaskProgress).toBe(true);
+			expect(loaded.immersive.immersiveShowSessionWords).toBe(true);
+		});
+
+		it.each([[100, 100], [150, 150], [200, 150]])('loads mobile cutout offset %i as %i pixels', async (saved, expected) => {
+			const raw = cloneDefaults();
+			raw.immersive.mobileCutoutLeftOffset = saved;
+			const plugin = {
+				loadData: vi.fn().mockResolvedValue(raw),
+				saveData: vi.fn().mockResolvedValue(undefined)
+			} as never;
+			const manager = new SettingsManager(plugin, cloneDefaults());
+			const loaded = await manager.loadSettings();
+
+			expect(loaded.immersive.mobileCutoutLeftOffset).toBe(expected);
+			expect(manager.validateSettings(loaded).valid).toBe(true);
+		});
 	});
 });
 
@@ -688,7 +754,15 @@ describe('settings search', () => {
 			const entries = SETTINGS_SEARCH_CATALOGUE.filter(entry => isEntryAvailableOnPlatform(entry, tier));
 			expect(entries.some(entry => entry.category === 'immersive')).toBe(true);
 			expect(entries.some(entry => entry.titleKey === 'setting.immersive-layout-builder')).toBe(tier === 'desktop');
-			expect(entries.some(entry => entry.titleKey === 'setting.immersive-dashboard-toggles')).toBe(tier === 'desktop');
+			expect(entries.some(entry => entry.titleKey === 'setting.immersive-dashboard-toggles')).toBe(true);
+			expect(entries.some(entry => entry.titleKey === 'setting.show-typewriter-controls')).toBe(tier === 'desktop');
+			expect(entries.some(entry => entry.titleKey === 'setting.show-manuscript-control')).toBe(tier === 'desktop');
+			expect(entries.some(entry => entry.titleKey === 'setting.show-total-time')).toBe(true);
+			expect(entries.some(entry => entry.titleKey === 'setting.show-floating-stats')).toBe(tier !== 'desktop');
+			if (tier !== 'desktop') {
+				const floatingEntry = entries.find(entry => entry.titleKey === 'setting.show-floating-stats');
+				expect(floatingEntry?.category).toBe('immersive');
+			}
 			expect(entries.some(entry => entry.titleKey === 'setting.immersive-typewriter-enable')).toBe(true);
 			expect(entries.some(entry => entry.titleKey === 'setting.immersive-manuscript-mode')).toBe(true);
 			expect(entries.some(entry => entry.category === 'obs')).toBe(tier === 'desktop');
@@ -727,7 +801,7 @@ describe('settings search', () => {
 			const result = searchSettingsCatalogue(zhCN['setting.idle-threshold'], { tier, translate: translateWith(zhCN) })
 				.filter(match => match.entry.titleKey === 'setting.idle-threshold');
 			expect(result).toHaveLength(1);
-			expect(result[0].entry.category).toBe(tier === 'desktop' ? 'obs' : 'general');
+			expect(result[0].entry.category).toBe(tier === 'desktop' ? 'obs' : 'immersive');
 		}
 	});
 	it('includes both light and dark eye-care background color settings in the search catalogue under eyecare-mode', () => {
@@ -791,7 +865,9 @@ describe('settings search', () => {
 
 		for (const key of [
 			'setting.immersive-mobile-aux-title',
-			'setting.immersive-mobile-aux-enabled'
+			'setting.immersive-mobile-aux-enabled',
+			'setting.immersive-mobile-cutout-avoidance',
+			'setting.immersive-mobile-cutout-offset'
 		]) {
 			const entry = SETTINGS_SEARCH_CATALOGUE.find(item => item.titleKey === key);
 			expect(entry, key).toBeDefined();

@@ -6,10 +6,12 @@ export interface CardImportanceButtonOptions {
 	isImportant: boolean;
 	onToggle: (newImportant: boolean) => Promise<void> | void;
 	cardEl?: HTMLElement;
+	canToggle?: () => boolean;
+	onSyncReady?: (sync: (important: boolean) => void) => void;
 }
 
 export function createCardImportanceButton(options: CardImportanceButtonOptions): HTMLButtonElement {
-	const { container, isImportant: initialImportant, onToggle, cardEl } = options;
+	const { container, isImportant: initialImportant, onToggle, cardEl, canToggle, onSyncReady } = options;
 	let currentImportant = initialImportant;
 
 	const btn = container.createEl('button', {
@@ -47,6 +49,7 @@ export function createCardImportanceButton(options: CardImportanceButtonOptions)
 		}
 	};
 	updateUI(currentImportant);
+	onSyncReady?.(updateUI);
 
 	// Prevent dragging or text selection from starting on the star button
 	btn.addEventListener('dragstart', (e) => {
@@ -62,7 +65,7 @@ export function createCardImportanceButton(options: CardImportanceButtonOptions)
 	btn.onclick = async (e) => {
 		e.stopPropagation();
 		e.preventDefault();
-		if (isToggling) return;
+		if (isToggling || (canToggle && !canToggle())) return;
 		isToggling = true;
 		const nextState = !currentImportant;
 		updateUI(nextState);

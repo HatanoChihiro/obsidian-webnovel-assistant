@@ -1,4 +1,9 @@
-import { DEFAULT_MOBILE_IMMERSIVE_AUX_PANEL, MOBILE_IMMERSIVE_AUX_VIEW_TYPES } from '../constants';
+import {
+	DEFAULT_MOBILE_CUTOUT_OFFSET,
+	DEFAULT_MOBILE_IMMERSIVE_AUX_PANEL,
+	MOBILE_IMMERSIVE_AUX_VIEW_TYPES,
+	VALIDATION_RULES
+} from '../constants';
 import type { MobileImmersiveAuxPanelState, MobileImmersiveAuxViewType } from '../types/settings';
 
 export interface MobileAuxViewportRect {
@@ -60,6 +65,11 @@ function sanitizeFiniteNumber(
 		return fallback;
 	}
 	return Math.round(Math.min(max, Math.max(min, raw)));
+}
+
+export function sanitizeMobileCutoutOffset(raw: unknown): number {
+	const { min, max } = VALIDATION_RULES.IMMERSIVE_MOBILE_CUTOUT_OFFSET;
+	return sanitizeFiniteNumber(raw, DEFAULT_MOBILE_CUTOUT_OFFSET, min, max);
 }
 
 /**

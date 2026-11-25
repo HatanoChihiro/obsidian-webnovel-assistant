@@ -1,7 +1,20 @@
 import type { TFile } from 'obsidian';
 import type { ForeshadowingStatus } from './foreshadowing';
+import type { TimelineEntry } from '../services/TimelineManager';
 
 export type ReferenceType = 'timeline' | 'foreshadowing';
+
+export interface TimelineReferenceTarget {
+	folderPath: string;
+	sourcePath: string;
+	itemIndex: number;
+	expectedEntry: TimelineEntry;
+}
+
+export interface ForeshadowingReferenceTarget {
+	sourcePath: string;
+	rawBlock: string;
+}
 
 export interface BaseReferenceItem {
 	id: string;
@@ -9,6 +22,7 @@ export interface BaseReferenceItem {
 	quote: string;
 	description: string;
 	time?: string;
+	important?: boolean;
 	sourceFile: TFile;
 	recordText?: string;
 }
@@ -16,8 +30,8 @@ export interface BaseReferenceItem {
 export interface TimelineReferenceItem extends BaseReferenceItem {
 	type: 'timeline';
 	eventType?: string;
-	important?: boolean;
 	lores?: string[];
+	timelineTarget?: TimelineReferenceTarget;
 }
 
 export interface ForeshadowingReferenceItem extends BaseReferenceItem {
@@ -27,6 +41,7 @@ export interface ForeshadowingReferenceItem extends BaseReferenceItem {
 	tags: string[];
 	stageType?: 'stage' | 'final';
 	note?: string;
+	foreshadowingTarget?: ForeshadowingReferenceTarget;
 }
 
 export type ChapterReferenceItem = TimelineReferenceItem | ForeshadowingReferenceItem;

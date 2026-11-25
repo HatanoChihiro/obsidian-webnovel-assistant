@@ -15,7 +15,12 @@ body.is-phone .wn-corkboard-card-header {
 
 
 body.is-phone .wn-corkboard-card-title {
-	font-size: var(--wn-phone-font-title);
+	font-size: calc(var(--wn-phone-font-title) - 2px);
+}
+
+
+body.is-phone .wn-corkboard-card-status {
+	font-size: calc(var(--wn-phone-font-meta) - 1px);
 }
 
 
@@ -26,14 +31,14 @@ body.is-phone .wn-corkboard-card-content {
 
 
 body.is-phone .wn-corkboard-card-text {
-	font-size: var(--wn-phone-font-body);
+	font-size: calc(var(--wn-phone-font-body) - 1px);
 	line-height: 1.4;
 }
 
 
 body.is-phone textarea.wn-corkboard-textarea,
 body.is-phone .wn-corkboard-card-content .wn-corkboard-textarea {
-	font-size: var(--wn-phone-font-body);
+	font-size: calc(var(--wn-phone-font-body) - 1px);
 	line-height: 1.4;
 	background: transparent;
 	border: none;

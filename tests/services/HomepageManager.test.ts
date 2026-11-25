@@ -3,31 +3,18 @@ import type { App } from 'obsidian';
 import { HomepageManager } from '../../src/services/HomepageManager';
 import type { WebNovelAssistantPlugin } from '../../src/types/plugin';
 
-const { mockRenderHomepage } = vi.hoisted(() => ({
-	mockRenderHomepage: vi.fn()
-}));
-
-vi.mock('../../src/ui/components/HomepageRenderer.js', () => {
-	return {
-		HomepageRenderer: class {
-			renderHomepage = mockRenderHomepage;
-		}
-	};
-});
-
 describe('HomepageManager', () => {
 	it('should route refresh paths correctly per leaf without redundancy', async () => {
 		const mockRerender1 = vi.fn();
 		const mockRerender2 = vi.fn();
 		const mockRootEl1 = {}; // has root
-		const mockRootEl2 = null; // missing root
 
 		const mockLeaf1 = {
 			view: {
 				getViewType: () => 'markdown',
 				file: { path: 'NovelA/创作主页.md' },
 				previewMode: { rerender: mockRerender1 },
-				containerEl: { querySelector: vi.fn().mockReturnValue(mockRootEl1) }
+				containerEl: { querySelectorAll: vi.fn().mockReturnValue([mockRootEl1]) }
 			}
 		};
 		const mockLeaf2 = {
@@ -35,7 +22,7 @@ describe('HomepageManager', () => {
 				getViewType: () => 'markdown',
 				file: { path: 'NovelA/创作主页.md' },
 				previewMode: { rerender: mockRerender2 },
-				containerEl: { querySelector: vi.fn().mockReturnValue(mockRootEl2) }
+				containerEl: { querySelectorAll: vi.fn().mockReturnValue([]) }
 			}
 		};
 
@@ -58,10 +45,10 @@ describe('HomepageManager', () => {
 			mockPlugin as unknown as WebNovelAssistantPlugin
 		);
 
-		// Case 1: direct renderHomepage succeeds
-		mockRenderHomepage.mockResolvedValue(true);
+		const mockRenderHomepage = vi.fn().mockResolvedValue(undefined);
+		manager.registerRenderChild({ containerEl: mockRootEl1, render: mockRenderHomepage, dispose: vi.fn() } as never);
 		await manager.refreshHomepageViews();
-		expect(mockRenderHomepage).toHaveBeenCalledWith(mockRootEl1);
+		expect(mockRenderHomepage).toHaveBeenCalledOnce();
 		expect(mockRerender1).not.toHaveBeenCalled(); // Successful render, no fallback
 		expect(mockRerender2).toHaveBeenCalledTimes(1); // Missing root, fallback once
 
@@ -71,7 +58,7 @@ describe('HomepageManager', () => {
 		mockRerender2.mockReset();
 		mockRenderHomepage.mockRejectedValue(new Error('test error'));
 		await manager.refreshHomepageViews();
-		expect(mockRenderHomepage).toHaveBeenCalledWith(mockRootEl1);
+		expect(mockRenderHomepage).toHaveBeenCalledOnce();
 		expect(mockRerender1).toHaveBeenCalledTimes(1); // Render failed, fallback once
 		expect(mockRerender2).toHaveBeenCalledTimes(1); // Missing root, fallback once
 	});

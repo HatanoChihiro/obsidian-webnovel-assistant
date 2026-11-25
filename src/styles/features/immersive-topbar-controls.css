@@ -1,7 +1,8 @@
 
 
-/* ========== 沉浸模式顶栏打字机 Toggle 开关 ========== */
+/* ========== 沉浸模式顶栏开关 ========== */
 
+.wn-immersive-top-bar-center .wn-stat-item.wn-immersive-manuscript-toggle,
 .wn-immersive-top-bar-center .wn-stat-item.wn-typewriter-toggle-container {
 	display: inline-flex;
 	align-items: center;
@@ -15,6 +16,7 @@
 	user-select: none;
 }
 
+.wn-immersive-top-bar-center .wn-immersive-manuscript-toggle-label,
 .wn-immersive-top-bar-center .wn-typewriter-toggle-label {
 	font-size: 0.85em;
 	color: var(--text-muted);

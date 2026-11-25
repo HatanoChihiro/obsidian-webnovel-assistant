@@ -357,4 +357,144 @@ describe('character highlight cache', () => {
 		extension.domEventHandlers.click({ target: normalElement } as never, {} as never);
 		expect(loreHoverMock).not.toHaveBeenCalled();
 	});
+
+	it('defers refresh for this editor during own star interaction while refreshing other editors, and flushes via microtask on hide without reentrant dispatch', async () => {
+		referencePopoverMock.open.mockClear();
+		referencePopoverMock.hide.mockClear();
+		const file = { path: 'Book/chapter.md' } as TFile;
+		const text = 'Alpha quote';
+		const item: ChapterReferenceItem = { id: 'timeline:Book/Timeline.md:0:0', type: 'timeline', quote: text, description: 'Event', sourceFile: file };
+		const listeners = new Set<() => void>();
+		let enabled = true;
+		let cachedReferences: ChapterReferenceItem[] | null = [item];
+		const prefetchReferences = vi.fn().mockResolvedValue([item]);
+		const service = {
+			onRefresh: vi.fn((cb: () => void) => {
+				listeners.add(cb);
+				return () => listeners.delete(cb);
+			}),
+			isAnyReferenceEnabled: () => enabled,
+			getReferencesSync: () => cachedReferences,
+			prefetchReferences,
+			setReferenceImportance: vi.fn().mockResolvedValue(true)
+		};
+		const plugin = { settings: { enableLorePopover: false }, chapterReferenceService: service } as unknown as WebNovelAssistantPlugin;
+		const extension = buildChapterReferenceExtension({ workspace: {} } as App, plugin) as unknown as {
+			create(view: EditorView): { decorations: DecorationSet; update(update: ViewUpdate): void; destroy(): void };
+			domEventHandlers: { click(event: unknown, view: EditorView): void };
+		};
+
+		let updatingA = false;
+		let instanceA!: ReturnType<typeof extension.create>;
+		const viewA = {
+			state: { doc: EditorState.create({ doc: text }).doc, field: () => ({ file }) },
+			visibleRanges: [{ from: 0, to: text.length }],
+			plugin: () => instanceA,
+			dispatch: vi.fn((spec: { effects: import('@codemirror/state').StateEffect<null> }) => {
+				if (updatingA) throw new Error('Reentrant dispatch during EditorView.update');
+				updatingA = true;
+				try {
+					instanceA.update({ view: viewA, transactions: [{ effects: [spec.effects] }] } as unknown as ViewUpdate);
+				} finally {
+					updatingA = false;
+				}
+			})
+		} as unknown as EditorView;
+
+		let instanceB!: ReturnType<typeof extension.create>;
+		const viewB = {
+			state: { doc: EditorState.create({ doc: text }).doc, field: () => ({ file }) },
+			visibleRanges: [{ from: 0, to: text.length }],
+			plugin: () => instanceB,
+			dispatch: vi.fn((spec: { effects: import('@codemirror/state').StateEffect<null> }) => {
+				instanceB.update({ view: viewB, transactions: [{ effects: [spec.effects] }] } as unknown as ViewUpdate);
+			})
+		} as unknown as EditorView;
+
+		instanceA = extension.create(viewA);
+		instanceB = extension.create(viewB);
+
+		const ownerDocument = { getSelection: () => ({ isCollapsed: true }) };
+		const target = {
+			ownerDocument,
+			getAttribute: () => `0:${text.length}`,
+			closest: (sel: string): unknown => sel === '.wn-reference-match' ? target : null
+		};
+		extension.domEventHandlers.click({ target, detail: 1 }, viewA);
+		expect(referencePopoverMock.open).toHaveBeenCalledTimes(1);
+
+		const openArgs = referencePopoverMock.open.mock.calls[0];
+		const onHide = openArgs[4] as () => void;
+		const popoverOptions = openArgs[5] as {
+			onToggleImportance?: (ref: ChapterReferenceItem, important: boolean) => Promise<void>;
+			onImportanceWriteStart?: () => void;
+			onImportanceWriteEnd?: (succeeded: boolean) => void;
+		} | undefined;
+		expect(popoverOptions?.onToggleImportance).toBeTypeOf('function');
+
+		// Start star write -> own refresh is deferred in editor A, but editor B still refreshes
+		popoverOptions?.onImportanceWriteStart?.();
+		cachedReferences = null; // Simulate scoped cache invalidation on own source write
+		for (const listener of listeners) listener();
+		popoverOptions?.onImportanceWriteEnd?.(true);
+
+		expect(viewA.dispatch).not.toHaveBeenCalled();
+		expect(referencePopoverMock.hide).not.toHaveBeenCalled();
+		expect(viewB.dispatch).toHaveBeenCalledTimes(1);
+
+		// Ordinary viewport update during deferred refresh must keep existing decorations instead of emptying anchors
+		prefetchReferences.mockClear();
+		instanceA.update({ view: viewA, transactions: [], viewportChanged: true } as unknown as ViewUpdate);
+		expect(instanceA.decorations.size).toBe(1);
+		expect(prefetchReferences).not.toHaveBeenCalled();
+		expect(referencePopoverMock.hide).not.toHaveBeenCalled();
+
+		// Normal dismiss flushes editor A via microtask (not synchronously inside hide)
+		cachedReferences = [item];
+		onHide();
+		expect(viewA.dispatch).not.toHaveBeenCalled();
+		await Promise.resolve();
+		expect(viewA.dispatch).toHaveBeenCalledTimes(1);
+
+		// Open again, star write + docChanged during EditorView.update must close without reentrant dispatch
+		extension.domEventHandlers.click({ target, detail: 1 }, viewA);
+		const secondOptions = referencePopoverMock.open.mock.calls[1][5] as typeof popoverOptions;
+		secondOptions?.onImportanceWriteStart?.();
+		for (const listener of listeners) listener();
+		secondOptions?.onImportanceWriteEnd?.(true);
+
+		updatingA = true;
+		try {
+			instanceA.update({ view: viewA, transactions: [], docChanged: true } as unknown as ViewUpdate);
+		} finally {
+			updatingA = false;
+		}
+		expect(referencePopoverMock.hide).toHaveBeenCalledTimes(1);
+		await Promise.resolve();
+		expect(viewA.dispatch).toHaveBeenCalledTimes(2);
+
+		// Turning settings off must immediately close popover even after a star write
+		extension.domEventHandlers.click({ target, detail: 1 }, viewA);
+		const thirdOptions = referencePopoverMock.open.mock.calls[2][5] as typeof popoverOptions;
+		thirdOptions?.onImportanceWriteStart?.();
+		thirdOptions?.onImportanceWriteEnd?.(true);
+		enabled = false;
+		for (const listener of listeners) listener();
+		expect(viewA.dispatch).toHaveBeenCalledTimes(3);
+		expect(referencePopoverMock.hide).toHaveBeenCalledTimes(2);
+
+		// Failed star write must not block subsequent external refreshes
+		enabled = true;
+		for (const listener of listeners) listener();
+		expect(viewA.dispatch).toHaveBeenCalledTimes(4);
+		extension.domEventHandlers.click({ target, detail: 1 }, viewA);
+		const fourthOptions = referencePopoverMock.open.mock.calls[3][5] as typeof popoverOptions;
+		fourthOptions?.onImportanceWriteStart?.();
+		fourthOptions?.onImportanceWriteEnd?.(false);
+		for (const listener of listeners) listener();
+		expect(viewA.dispatch).toHaveBeenCalledTimes(5);
+
+		instanceA.destroy();
+		instanceB.destroy();
+	});
 });

@@ -2,7 +2,19 @@ import { showPluginNotice } from '../../services/PluginNoticeService';
 import type { App, Component, WorkspaceLeaf } from 'obsidian';
 import { setIcon, setTooltip, TFile, Modal } from 'obsidian';
 import type { ParsedForeshadowingEntry } from '../../types/foreshadowing';
-import { deepCloneEntry, filterTimelineEntries, parseTimelineChapterList, type TimelineEntry, type TimelineItem, type TimelineManager } from '../../services/TimelineManager';
+import {
+	deepCloneEntry,
+	deepClonePendingEvent,
+	filterTimelineEntries,
+	getTimelineEntryLocateCandidates,
+	getTimelineNodeDisplayTime,
+	parseTimelineChapterList,
+	type PendingTimelineEvent,
+	type TimelineEntry,
+	type TimelineInsertAnchor,
+	type TimelineItem,
+	type TimelineManager
+} from '../../services/TimelineManager';
 import { CorkboardGridRenderer } from './CorkboardGridRenderer';
 import { TimelineAddModal } from '../TimelineAddModal';
 import { TimelineEditModal } from '../TimelineEditModal';
@@ -18,6 +30,24 @@ import { createCardImportanceButton } from './CardImportanceButton';
 import { setupStickyNoteParagraphEditor, teardownStickyNoteParagraphEditor, getStickyNoteEditorContent, setStickyNoteEditorContent } from './StickyNoteParagraphEditor';
 import { renderLoreBadges } from '../../utils/badge';
 import { renderTrajectoryMode } from './TrajectoryBoardRenderer';
+
+const DRAG_MIME_CHAPTER = 'application/wn-chapter-path';
+const DRAG_MIME_EVENT_TIME = 'application/wn-timeline-event-time';
+const DRAG_MIME_ENTRY_INDEX = 'application/wn-timeline-entry-index';
+const DRAG_MIME_EVENT_INDEX = 'application/wn-timeline-event-index';
+const DRAG_MIME_PENDING_ID = 'application/wn-timeline-pending-id';
+const DRAG_MIME_NODE_INDEX = 'application/wn-timeline-node-index';
+
+type TimelineDragKind = 'node' | 'pending' | 'event' | 'chapter' | null;
+
+function getTimelineDragKind(dataTransfer: DataTransfer | null): TimelineDragKind {
+	if (!dataTransfer?.types) return null;
+	if (dataTransfer.types.includes(DRAG_MIME_NODE_INDEX)) return 'node';
+	if (dataTransfer.types.includes(DRAG_MIME_PENDING_ID)) return 'pending';
+	if (dataTransfer.types.includes(DRAG_MIME_ENTRY_INDEX) || dataTransfer.types.includes(DRAG_MIME_EVENT_TIME)) return 'event';
+	if (dataTransfer.types.includes(DRAG_MIME_CHAPTER)) return 'chapter';
+	return null;
+}
 
 class ConfirmDeleteEventModal extends Modal {
 	constructor(app: App, private title: string, private onConfirm: () => void) {
@@ -55,6 +85,19 @@ function getPlaintextContent(el: HTMLElement): string {
 	return raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 }
 
+function focusTimelineDescriptionEnd(editor: HTMLElement): void {
+	editor.focus({ preventScroll: true });
+	const doc = editor.ownerDocument;
+	const selection = doc.defaultView?.getSelection();
+	if (!selection) return;
+
+	const range = doc.createRange();
+	range.selectNodeContents(editor);
+	range.collapse(false);
+	selection.removeAllRanges();
+	selection.addRange(range);
+}
+
 export type TimelineBoardTimelineManager = Pick<
 	TimelineManager,
 	| 'loadEntries'
@@ -67,7 +110,17 @@ export type TimelineBoardTimelineManager = Pick<
 	| 'getTimelineFilePath'
 	| 'findEntryHeadingOffset'
 	| 'appendEntry'
->;
+> & Partial<Pick<
+	TimelineManager,
+	| 'loadDocument'
+	| 'addPendingEvent'
+	| 'updatePendingEvent'
+	| 'deletePendingEvent'
+	| 'placePendingEventIntoNode'
+	| 'createNodeFromPendingEvent'
+	| 'moveEventToPending'
+	| 'moveEntry'
+>>;
 
 import type { CharacterManager } from '../../services/CharacterManager';
 
@@ -103,6 +156,7 @@ export interface TimelineBoardOptions {
 	foreshadowingMap: Map<string, ParsedForeshadowingEntry[]>;
 	currentBookPath: string;
 	loadedEntries?: TimelineEntry[] | null;
+	loadedPendingEvents?: PendingTimelineEvent[];
 	currentTimelineFilter?: readonly string[];
 	currentTimelineLoreFilter?: readonly string[] | Set<string>;
 	onSaveStateChange: (isSaving: boolean) => void;
@@ -113,6 +167,9 @@ export interface TimelineBoardOptions {
 	onToggleUnscheduledSort?: () => void;
 	isSidebarCollapsed?: boolean;
 	onToggleSidebarCollapse?: () => void;
+	pendingInputDraft?: string;
+	onPendingInputDraftChange?: (draft: string) => void;
+	onRequestPendingInputFocus?: () => void;
 	isTrajectoryMode?: boolean;
 }
 
@@ -135,13 +192,28 @@ export class TimelineBoardRenderer {
 			onToggleUnscheduledSort,
 			isSidebarCollapsed,
 			onToggleSidebarCollapse,
+			pendingInputDraft = '',
+			onPendingInputDraftChange,
+			onRequestPendingInputFocus,
 			isTrajectoryMode
 		} = options;
 
 		const tStart = performance.now();
 		const timelineManager = plugin.timelineManager;
 		const bookFolder = currentBookPath === '/' ? '' : (currentBookPath || '');
-		let entries = options.loadedEntries !== undefined ? options.loadedEntries : await timelineManager.loadEntries(bookFolder);
+		let entries: TimelineEntry[] | null;
+		let pendingEvents: PendingTimelineEvent[] = options.loadedPendingEvents ? options.loadedPendingEvents.map(deepClonePendingEvent) : [];
+		if (options.loadedEntries !== undefined) {
+			entries = options.loadedEntries;
+		} else if (typeof timelineManager.loadDocument === 'function') {
+			const loadedDoc = await timelineManager.loadDocument(bookFolder);
+			entries = loadedDoc ? loadedDoc.entries : null;
+			if (options.loadedPendingEvents === undefined) {
+				pendingEvents = loadedDoc ? loadedDoc.pendingEvents : [];
+			}
+		} else {
+			entries = await timelineManager.loadEntries(bookFolder);
+		}
 		const tEntries = performance.now();
 		Logger.info(`[Perf Phase] Timeline.loadEntries: ${(tEntries - tStart).toFixed(2)}ms`);
 
@@ -180,7 +252,7 @@ export class TimelineBoardRenderer {
 			await smartLocateAndHighlight(
 				app,
 				timelineFile,
-				[`## ${entry.time}`, `# ${entry.time}`, entry.time],
+				getTimelineEntryLocateCandidates(entry),
 				{ splitIfNew: true, fallbackLine, matchStartGlobal }
 			);
 		};
@@ -266,9 +338,268 @@ export class TimelineBoardRenderer {
 		const mainCol = waterfallLayout.createDiv('wn-timeline-waterfall-main');
 		const sideCol = waterfallLayout.createDiv('wn-timeline-waterfall-sidebar');
 
+		const boardDoc = waterfallLayout.ownerDocument;
+		const boardWin = boardDoc.defaultView || window;
+		const canSortNodes = typeof timelineManager.moveEntry === 'function' && displayEntries.length > 0;
+		let activeDraggingNodeEl: HTMLElement | null = null;
+		let activeNodeDragIndex: number | null = null;
+		let nodeSortScrollTop: number | null = null;
+		let activeNodeDropTarget: HTMLElement | null = null;
+		let activeNodeDropClass: string | null = null;
+		let nodeHoldTimer: number | null = null;
+		let nodeHoldCleanup: (() => void) | null = null;
+		let nodeDragKeyCleanup: (() => void) | null = null;
+
+		const clearNodeDropIndicator = (): void => {
+			if (activeNodeDropTarget && activeNodeDropClass) {
+				activeNodeDropTarget.removeClass(activeNodeDropClass);
+			}
+			activeNodeDropTarget = null;
+			activeNodeDropClass = null;
+		};
+
+		const setNodeDropIndicator = (targetEl: HTMLElement, cls: string): void => {
+			if (activeNodeDropTarget === targetEl && activeNodeDropClass === cls) return;
+			clearNodeDropIndicator();
+			activeNodeDropTarget = targetEl;
+			activeNodeDropClass = cls;
+			targetEl.addClass(cls);
+		};
+
+		const clearNodeHoldState = (): void => {
+			if (nodeHoldTimer !== null) {
+				boardWin.clearTimeout(nodeHoldTimer);
+				nodeHoldTimer = null;
+			}
+			if (nodeHoldCleanup) {
+				nodeHoldCleanup();
+				nodeHoldCleanup = null;
+			}
+		};
+
+		const exitNodeSortMode = (): void => {
+			clearNodeHoldState();
+			activeNodeDragIndex = null;
+			if (nodeDragKeyCleanup) {
+				nodeDragKeyCleanup();
+				nodeDragKeyCleanup = null;
+			}
+			clearNodeDropIndicator();
+			waterfallLayout.removeClass('is-node-sorting');
+			if (nodeSortScrollTop !== null) {
+				mainCol.setCssProps({ '--wn-timeline-node-sort-buffer': '' });
+				mainCol.scrollTop = nodeSortScrollTop;
+				nodeSortScrollTop = null;
+			}
+			if (activeDraggingNodeEl) {
+				activeDraggingNodeEl.removeClass('is-node-dragging');
+				activeDraggingNodeEl = null;
+			}
+		};
+
+		const observeNodeSortCancellation = (): void => {
+			if (nodeDragKeyCleanup) return;
+
+			const onEscape = (event: KeyboardEvent) => {
+				if (event.key === 'Escape') exitNodeSortMode();
+			};
+			boardDoc.addEventListener('keydown', onEscape);
+			boardWin.addEventListener?.('blur', exitNodeSortMode);
+			nodeDragKeyCleanup = () => {
+				boardDoc.removeEventListener('keydown', onEscape);
+				boardWin.removeEventListener?.('blur', exitNodeSortMode);
+			};
+		};
+
+		const enterNodeSortMode = (nodeEl: HTMLElement, handleEl: HTMLElement): void => {
+			if (nodeSortScrollTop === null) {
+				const handleTop = handleEl.getBoundingClientRect().top;
+				nodeSortScrollTop = mainCol.scrollTop;
+				// Reserve space on both ends so the collapsed list can scroll to the pressed dot.
+				mainCol.setCssProps({ '--wn-timeline-node-sort-buffer': mainCol.clientHeight + 'px' });
+				waterfallLayout.addClass('is-node-sorting');
+				mainCol.scrollTop += handleEl.getBoundingClientRect().top - handleTop;
+			}
+			if (activeDraggingNodeEl && activeDraggingNodeEl !== nodeEl) {
+				activeDraggingNodeEl.removeClass('is-node-dragging');
+			}
+			activeDraggingNodeEl = nodeEl;
+			nodeEl.addClass('is-node-dragging');
+			observeNodeSortCancellation();
+		};
+
+		if (options.ownerComponent) {
+			options.ownerComponent.register(exitNodeSortMode);
+		}
+
+		const handleMoveNodeDrop = async (
+			sourceEntryIndex: number,
+			targetEntryIndex: number,
+			position: 'before' | 'after'
+		): Promise<void> => {
+			if (typeof timelineManager.moveEntry !== 'function') return;
+			if (!Number.isInteger(sourceEntryIndex) || sourceEntryIndex < 0 || sourceEntryIndex >= allEntries.length) return;
+			if (!Number.isInteger(targetEntryIndex) || targetEntryIndex < 0 || targetEntryIndex >= allEntries.length) return;
+
+			const sourcePosition = displayPositionByEntryIndex.get(sourceEntryIndex);
+			const targetPosition = displayPositionByEntryIndex.get(targetEntryIndex);
+			if (sourcePosition === undefined || targetPosition === undefined) return;
+			const visibleInsertAt = targetPosition + (position === 'after' ? 1 : 0);
+			if (visibleInsertAt === sourcePosition || visibleInsertAt === sourcePosition + 1) return;
+
+			const insertAt = !isDescending
+				? (position === 'before' ? targetEntryIndex : targetEntryIndex + 1)
+				: (position === 'before' ? targetEntryIndex + 1 : targetEntryIndex);
+			if (insertAt === sourceEntryIndex || insertAt === sourceEntryIndex + 1) {
+				return;
+			}
+
+			const finalIndex = insertAt > sourceEntryIndex ? insertAt - 1 : insertAt;
+			if (finalIndex < 0 || finalIndex >= allEntries.length || finalIndex === sourceEntryIndex) {
+				return;
+			}
+
+			if (pendingInlineSaves.size > 0) {
+				const inlineSaveOk = await awaitPendingInlineSaves();
+				if (!inlineSaveOk) {
+					return;
+				}
+			}
+
+			const sourceEntry = allEntries[sourceEntryIndex];
+			const targetEntry = allEntries[finalIndex];
+			if (!sourceEntry || !targetEntry) return;
+
+			const expectedFromEntry = deepCloneEntry(sourceEntry);
+			const expectedTargetEntry = deepCloneEntry(targetEntry);
+			onSaveStateChange(true);
+			let succeeded = false;
+			try {
+				const content = await timelineManager.moveEntry(
+					sourceEntryIndex,
+					finalIndex,
+					bookFolder,
+					expectedFromEntry,
+					expectedTargetEntry
+				);
+				succeeded = Boolean(content);
+			} catch (err) {
+				Logger.error('[TimelineBoard] moveEntry 失败:', err);
+			} finally {
+				onSaveStateChange(false);
+				if (succeeded) {
+					reloadBoard();
+				}
+			}
+		};
+
+		const setupNodeDropzone = (el: HTMLElement, targetEntryIndex: number, atGap?: 'before' | 'after'): void => {
+			let dragCounter = 0;
+			const isLocalNodeDrag = (event: DragEvent) =>
+				activeNodeDragIndex !== null && getTimelineDragKind(event.dataTransfer) === 'node';
+			const getPosition = (event: DragEvent): 'before' | 'after' => {
+				if (atGap) return atGap;
+				const rect = el.getBoundingClientRect();
+				return event.clientY >= rect.top + rect.height / 2 ? 'after' : 'before';
+			};
+
+			el.addEventListener('dragenter', (event) => {
+				if (!isLocalNodeDrag(event)) return;
+				event.preventDefault();
+				dragCounter++;
+			});
+			el.addEventListener('dragover', (event) => {
+				if (!isLocalNodeDrag(event)) return;
+				event.preventDefault();
+				event.stopPropagation();
+				if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+				const isAfter = getPosition(event) === 'after';
+				setNodeDropIndicator(el, atGap ? 'drag-over-node' : (isAfter ? 'drag-over-node-bottom' : 'drag-over-node-top'));
+			});
+			el.addEventListener('dragleave', (event) => {
+				if (getTimelineDragKind(event.dataTransfer) !== 'node') return;
+				dragCounter = Math.max(0, dragCounter - 1);
+				if (dragCounter === 0 && activeNodeDropTarget === el) clearNodeDropIndicator();
+			});
+			el.addEventListener('drop', (event) => {
+				const sourceIndex = activeNodeDragIndex;
+				if (sourceIndex === null || !isLocalNodeDrag(event)) return;
+				dragCounter = 0;
+				event.preventDefault();
+				event.stopPropagation();
+				const position = getPosition(event);
+				const rawSource = event.dataTransfer?.getData(DRAG_MIME_NODE_INDEX);
+				exitNodeSortMode();
+				if (rawSource !== String(sourceIndex)) return;
+				void handleMoveNodeDrop(sourceIndex, targetEntryIndex, position);
+			});
+		};
+
+		const setupNodeHandle = (handleEl: HTMLElement, nodeEl: HTMLElement, entryIndex: number): void => {
+			handleEl.setAttribute('draggable', 'true');
+			handleEl.setAttribute('aria-label', t('timeline.drag-to-reorder-node'));
+			handleEl.addEventListener('click', (e) => e.stopPropagation());
+			handleEl.addEventListener('mousedown', (e: MouseEvent) => {
+				if (e.button !== 0) return;
+				e.stopPropagation();
+				exitNodeSortMode();
+				observeNodeSortCancellation();
+				const startX = e.clientX;
+				const startY = e.clientY;
+				nodeHoldTimer = boardWin.setTimeout(() => {
+					nodeHoldTimer = null;
+					if (!waterfallLayout.isConnected) {
+						exitNodeSortMode();
+						return;
+					}
+					enterNodeSortMode(nodeEl, handleEl);
+				}, 220);
+
+				if (typeof boardDoc.addEventListener === 'function') {
+					const onMouseMove = (ev: MouseEvent) => {
+						if (nodeHoldTimer !== null) {
+							if (Math.abs(ev.clientX - startX) > 6 || Math.abs(ev.clientY - startY) > 6) {
+								exitNodeSortMode();
+							}
+						}
+					};
+					const onMouseUp = () => {
+						exitNodeSortMode();
+					};
+					boardDoc.addEventListener('mousemove', onMouseMove);
+					boardDoc.addEventListener('mouseup', onMouseUp);
+					nodeHoldCleanup = () => {
+						boardDoc.removeEventListener?.('mousemove', onMouseMove);
+						boardDoc.removeEventListener?.('mouseup', onMouseUp);
+					};
+				}
+			});
+			handleEl.addEventListener('dragstart', (e: DragEvent) => {
+				e.stopPropagation();
+				clearNodeHoldState();
+				if (!waterfallLayout.isConnected) {
+					exitNodeSortMode();
+					return;
+				}
+				if (!e.dataTransfer) return;
+				e.dataTransfer.effectAllowed = 'move';
+				e.dataTransfer.setData(DRAG_MIME_NODE_INDEX, String(entryIndex));
+				activeNodeDragIndex = entryIndex;
+				enterNodeSortMode(nodeEl, handleEl);
+			});
+			handleEl.addEventListener('dragend', () => {
+				exitNodeSortMode();
+			});
+		};
+
 		// Track in-flight inline editor saves for this rendered board to preserve interaction ordering
 		const pendingInlineSaves = new Set<Promise<boolean>>();
 		let isEditModalLaunching = false;
+		let activeInlineNodeForm: HTMLElement | null = null;
+		const typeOptions = [...new Set([
+			...(plugin.settings.timeline?.defaultTypes || []),
+			...allEntries.map(e => e.type).filter((type): type is string => Boolean(type))
+		])];
 
 		const registerPendingInlineSave = (promise: Promise<boolean>): void => {
 			pendingInlineSaves.add(promise);
@@ -289,11 +620,252 @@ export class TimelineBoardRenderer {
 			return allOk;
 		};
 
+		const findPendingById = (pendingId: string): PendingTimelineEvent | undefined => {
+			return pendingEvents.find(ev => ev.id === pendingId);
+		};
+
+		const handlePlacePendingIntoNode = async (
+			pendingId: string,
+			targetEntryIndex: number,
+			targetItemIndex?: number
+		): Promise<void> => {
+			if (typeof timelineManager.placePendingEventIntoNode !== 'function') return;
+			const pendingEvent = findPendingById(pendingId);
+			const targetEntry = allEntries[targetEntryIndex];
+			if (!pendingEvent || !targetEntry) return;
+			if (pendingInlineSaves.size > 0) {
+				const inlineSaveOk = await awaitPendingInlineSaves();
+				if (!inlineSaveOk) return;
+			}
+			onSaveStateChange(true);
+			let succeeded = false;
+			try {
+				await timelineManager.placePendingEventIntoNode(
+					pendingId,
+					targetEntryIndex,
+					targetItemIndex,
+					bookFolder,
+					deepClonePendingEvent(pendingEvent),
+					deepCloneEntry(targetEntry)
+				);
+				succeeded = true;
+			} catch (err) {
+				if (err instanceof Error && err.message === t('timeline.pending-empty-error')) showPluginNotice(err.message);
+				Logger.error('[TimelineBoard] placePendingEventIntoNode 失败:', err);
+			} finally {
+				onSaveStateChange(false);
+				if (succeeded) {
+					reloadBoard();
+				}
+			}
+		};
+
+		const handleReturnEventToPending = async (
+			sourceEntryIndex: number,
+			sourceItemIndex: number
+		): Promise<void> => {
+			if (typeof timelineManager.moveEventToPending !== 'function') return;
+			const sourceEntry = allEntries[sourceEntryIndex];
+			const sourceItems = sourceEntry?.items?.length
+				? sourceEntry.items
+				: (sourceEntry && (sourceEntry.description || sourceEntry.chapter || sourceEntry.origin || sourceEntry.important)
+					? [{ description: sourceEntry.description, chapter: sourceEntry.chapter, origin: sourceEntry.origin, important: sourceEntry.important }]
+					: []);
+			if (!sourceEntry || !sourceItems[sourceItemIndex]) return;
+
+			if (pendingInlineSaves.size > 0) {
+				const inlineSaveOk = await awaitPendingInlineSaves();
+				if (!inlineSaveOk) return;
+			}
+			const expectedItem = sourceEntry.items?.[sourceItemIndex] ?? sourceItems[sourceItemIndex];
+			if (!expectedItem) return;
+			onSaveStateChange(true);
+			let succeeded = false;
+			try {
+				await timelineManager.moveEventToPending(
+					sourceEntryIndex,
+					sourceItemIndex,
+					bookFolder,
+					{ ...expectedItem },
+					deepCloneEntry(sourceEntry)
+				);
+				succeeded = true;
+			} catch (err) {
+				Logger.error('[TimelineBoard] moveEventToPending 失败:', err);
+			} finally {
+				onSaveStateChange(false);
+				if (succeeded) {
+					reloadBoard();
+				}
+			}
+		};
+
+		const openInlineNewNodeForm = (
+			slotEl: HTMLElement,
+			pendingEvent: PendingTimelineEvent,
+			anchor: TimelineInsertAnchor
+		): void => {
+			if (activeInlineNodeForm) {
+				activeInlineNodeForm.remove();
+				activeInlineNodeForm = null;
+			}
+
+			const form = slotEl.createDiv({ cls: 'wn-timeline-inline-node-form' });
+			activeInlineNodeForm = form;
+
+			const previewRow = form.createDiv({ cls: 'wn-timeline-inline-node-preview' });
+			previewRow.createSpan({ cls: 'wn-timeline-inline-node-preview-label', text: t('timeline.inline-create-node-title') });
+			const previewText = pendingEvent.description.trim() || pendingEvent.chapter || t('trajectory.no-description');
+			previewRow.createSpan({ cls: 'wn-timeline-inline-node-preview-text', text: previewText });
+
+			const fieldsRow = form.createDiv({ cls: 'wn-timeline-inline-node-fields' });
+			const timeInput = fieldsRow.createEl('input', {
+				type: 'text',
+				cls: 'wn-timeline-form-input wn-timeline-inline-time-input'
+			});
+			timeInput.placeholder = t('modal.time-point-desc');
+			timeInput.setAttr('aria-label', t('modal.time-point'));
+
+			const pendingLabel = fieldsRow.createEl('label', { cls: 'wn-timeline-time-pending-label' });
+			const pendingCheckbox = pendingLabel.createEl('input', {
+				type: 'checkbox',
+				cls: 'wn-timeline-time-pending-checkbox'
+			});
+			pendingCheckbox.checked = false;
+			pendingLabel.createSpan({ text: t('timeline.time-pending') });
+
+			const typeSelect = fieldsRow.createEl('select', {
+				cls: 'wn-timeline-form-input wn-timeline-inline-type-select'
+			});
+			typeSelect.setAttr('aria-label', t('modal.type-optional'));
+			typeSelect.createEl('option', { value: '', text: t('modal.no-type') });
+			for (const typeOption of typeOptions) {
+				typeSelect.createEl('option', { value: typeOption, text: typeOption });
+			}
+
+			const actionsRow = form.createDiv({ cls: 'wn-timeline-inline-node-actions' });
+			const cancelBtn = actionsRow.createEl('button', {
+				type: 'button',
+				cls: 'wn-timeline-action-btn wn-timeline-inline-cancel-btn',
+				text: t('common.cancel')
+			});
+			const confirmBtn = actionsRow.createEl('button', {
+				type: 'button',
+				cls: 'wn-timeline-action-btn mod-cta wn-timeline-inline-confirm-btn',
+				text: t('common.confirm')
+			});
+
+			let isSaving = false;
+			let isComposing = false;
+
+			const closeForm = () => {
+				if (isSaving) return;
+				form.remove();
+				if (activeInlineNodeForm === form) {
+					activeInlineNodeForm = null;
+				}
+			};
+
+			const syncCheckbox = () => {
+				const isPending = Boolean(pendingCheckbox.checked);
+				timeInput.disabled = isPending;
+				if (isPending) {
+					timeInput.addClass('is-disabled');
+				} else {
+					timeInput.removeClass('is-disabled');
+				}
+				if (!isPending) {
+					timeInput.focus();
+				}
+			};
+			pendingCheckbox.addEventListener('change', syncCheckbox);
+
+			const submitForm = () => {
+				if (isSaving) return;
+				if (typeof timelineManager.createNodeFromPendingEvent !== 'function') return;
+				const isTimePending = Boolean(pendingCheckbox.checked);
+				const time = isTimePending ? '' : timeInput.value.trim();
+				if (!isTimePending && !time) {
+					showPluginNotice(t('modal.please-fill-time-point'));
+					timeInput.focus();
+					return;
+				}
+
+				void (async () => {
+					if (pendingInlineSaves.size > 0) {
+						const inlineSaveOk = await awaitPendingInlineSaves();
+						if (!inlineSaveOk) return;
+					}
+					isSaving = true;
+					confirmBtn.disabled = true;
+					cancelBtn.disabled = true;
+					onSaveStateChange(true);
+					let succeeded = false;
+					try {
+						await timelineManager.createNodeFromPendingEvent!(
+							pendingEvent.id,
+							{ time, timePending: isTimePending, type: typeSelect.value || undefined },
+							anchor,
+							bookFolder,
+							deepClonePendingEvent(pendingEvent)
+						);
+						succeeded = true;
+					} catch (err) {
+						const msg = err instanceof Error ? err.message : String(err);
+						if (!msg.includes(t('timeline.conflict-notice')) && !msg.includes(t('modal.please-fill-time-point'))) {
+							showPluginNotice(t('modal.save-failed', { error: msg }));
+						}
+						Logger.error('[TimelineBoard] createNodeFromPendingEvent 失败:', err);
+					} finally {
+						isSaving = false;
+						confirmBtn.disabled = false;
+						cancelBtn.disabled = false;
+						onSaveStateChange(false);
+						if (succeeded) {
+							closeForm();
+							reloadBoard();
+						}
+					}
+				})();
+			};
+
+			cancelBtn.onclick = (e: MouseEvent) => {
+				e.stopPropagation();
+				closeForm();
+			};
+			confirmBtn.onclick = (e: MouseEvent) => {
+				e.stopPropagation();
+				submitForm();
+			};
+
+			timeInput.addEventListener('compositionstart', () => { isComposing = true; });
+			timeInput.addEventListener('compositionend', () => { isComposing = false; });
+			timeInput.addEventListener('keydown', (e: KeyboardEvent) => {
+				if (e.key === 'Enter') {
+					if (isComposing || e.isComposing || (e as { keyCode?: number }).keyCode === 229) return;
+					e.preventDefault();
+					e.stopPropagation();
+					submitForm();
+				}
+			});
+
+			form.addEventListener('keydown', (e: KeyboardEvent) => {
+				if (e.key === 'Escape') {
+					e.preventDefault();
+					e.stopPropagation();
+					closeForm();
+				}
+			});
+
+			form.addEventListener('click', (e: MouseEvent) => e.stopPropagation());
+			timeInput.focus();
+		};
+
 		// Handle drag and drop logic
 		const handleDrop = async (e: DragEvent, targetEvents: { time: string, entryIndex: number, itemIndex?: number }[]) => {
 			e.preventDefault();
 			e.stopPropagation();
-			const path = e.dataTransfer?.getData('application/wn-chapter-path') || e.dataTransfer?.getData('text/plain');
+			const path = e.dataTransfer?.getData(DRAG_MIME_CHAPTER) || e.dataTransfer?.getData('text/plain');
 			if (!path) return;
 			const targetFile = app.vault.getAbstractFileByPath(path);
 			if (targetFile instanceof TFile) {
@@ -307,11 +879,7 @@ export class TimelineBoardRenderer {
 				try {
 					const enrichedTargetEvents = targetEvents.map(target => {
 						const ent = allEntries[target.entryIndex];
-						const expectedEntry: TimelineEntry | undefined = ent ? {
-							...ent,
-							lores: ent.lores ? [...ent.lores] : undefined,
-							items: ent.items ? ent.items.map(it => ({ ...it })) : undefined
-						} : undefined;
+						const expectedEntry: TimelineEntry | undefined = ent ? deepCloneEntry(ent) : undefined;
 						return {
 							...target,
 							expectedEntry
@@ -327,30 +895,101 @@ export class TimelineBoardRenderer {
 			}
 		};
 
-		const setupDropzone = (el: HTMLElement, targetEvents: { time: string, entryIndex: number, itemIndex?: number }[]) => {
+		const setupPendingSlotDropzone = (el: HTMLElement, anchor: TimelineInsertAnchor) => {
 			let dragCounter = 0;
-			let isInsertAfter = false; // Track whether to insert after (bottom half)
-
 			el.addEventListener('dragenter', (e) => {
-				if (el.hasClass('wn-timeline-gap') && e.dataTransfer?.types.includes('application/wn-timeline-event-time')) {
-					return; // Gaps do not accept event cards
-				}
+				if (getTimelineDragKind(e.dataTransfer) !== 'pending') return;
 				e.preventDefault();
 				dragCounter++;
 			});
 			el.addEventListener('dragover', (e) => {
-				if (el.hasClass('wn-timeline-gap') && e.dataTransfer?.types.includes('application/wn-timeline-event-time')) {
-					return; // Gaps do not accept event cards
+				if (getTimelineDragKind(e.dataTransfer) !== 'pending') return;
+				e.preventDefault();
+				if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+				el.addClass('drag-over-event');
+			});
+			el.addEventListener('dragleave', (e) => {
+				if (getTimelineDragKind(e.dataTransfer) !== 'pending') return;
+				dragCounter--;
+				if (dragCounter <= 0) {
+					dragCounter = 0;
+					el.removeClass('drag-over-event');
 				}
+			});
+			el.addEventListener('drop', (e) => {
+				if (getTimelineDragKind(e.dataTransfer) !== 'pending') return;
+				dragCounter = 0;
+				el.removeClass('drag-over-event');
+				e.preventDefault();
+				e.stopPropagation();
+				const pendingId = e.dataTransfer?.getData(DRAG_MIME_PENDING_ID);
+				if (!pendingId) return;
+				const pendingEvent = findPendingById(pendingId);
+				if (!pendingEvent) return;
+				openInlineNewNodeForm(el, pendingEvent, anchor);
+			});
+		};
+
+		interface DropzoneConfig {
+			pendingInsertAnchor?: TimelineInsertAnchor;
+			pendingInsertTarget?: { entryIndex: number; itemIndex?: number };
+			acceptScheduledEventToPending?: boolean;
+			allowChapterDrop?: boolean;
+		}
+
+		const setupDropzone = (
+			el: HTMLElement,
+			targetEvents: { time: string, entryIndex: number, itemIndex?: number }[],
+			config: DropzoneConfig = {}
+		) => {
+			let dragCounter = 0;
+			let isInsertAfter = false;
+			const isBetweenNodeGap = el.hasClass('wn-timeline-gap') && !el.hasClass('wn-timeline-sub-gap');
+			const allowChapterDrop = config.allowChapterDrop !== false;
+
+			const canAcceptDragKind = (kind: TimelineDragKind): boolean => {
+				if (kind === 'node') {
+					return false;
+				}
+				if (kind === 'pending') {
+					return Boolean(config.pendingInsertAnchor || config.pendingInsertTarget || el.hasClass('wn-timeline-item-row'));
+				}
+				if (kind === 'event') {
+					if (config.acceptScheduledEventToPending) return true;
+					if (isBetweenNodeGap) return false;
+					return targetEvents.length > 0 || Boolean(config.pendingInsertTarget);
+				}
+				if (kind === 'chapter') {
+					return allowChapterDrop;
+				}
+				return allowChapterDrop;
+			};
+
+			const clearDragClasses = () => {
+				el.removeClass('drag-over-event');
+				el.removeClass('drag-over-event-top');
+				el.removeClass('drag-over-event-bottom');
+				el.removeClass('drag-over-chapter');
+				el.removeClass('drag-over');
+			};
+
+			el.addEventListener('dragenter', (e) => {
+				const kind = getTimelineDragKind(e.dataTransfer);
+				if (!canAcceptDragKind(kind)) return;
+				e.preventDefault();
+				dragCounter++;
+			});
+			el.addEventListener('dragover', (e) => {
+				const kind = getTimelineDragKind(e.dataTransfer);
+				if (!canAcceptDragKind(kind)) return;
 				e.preventDefault();
 				if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
 
-				if (e.dataTransfer?.types.includes('application/wn-timeline-event-time')) {
+				if (kind === 'event' || kind === 'pending') {
 					if (el.hasClass('wn-timeline-item-row')) {
 						const rect = el.getBoundingClientRect();
 						const midY = rect.top + rect.height / 2;
 						isInsertAfter = e.clientY >= midY;
-						
 						if (isInsertAfter) {
 							el.removeClass('drag-over-event-top');
 							el.addClass('drag-over-event-bottom');
@@ -359,57 +998,80 @@ export class TimelineBoardRenderer {
 							el.addClass('drag-over-event-top');
 						}
 					} else {
-						el.addClass('drag-over-event'); // fallback for gaps
+						el.addClass('drag-over-event');
 					}
-				} else if (e.dataTransfer?.types.includes('application/wn-chapter-path')) {
+				} else if (kind === 'chapter') {
 					el.addClass('drag-over-chapter');
 				} else {
 					el.addClass('drag-over');
 				}
 			});
 			el.addEventListener('dragleave', (e) => {
-				if (el.hasClass('wn-timeline-gap') && e.dataTransfer?.types.includes('application/wn-timeline-event-time')) {
-					return;
-				}
+				const kind = getTimelineDragKind(e.dataTransfer);
+				if (!canAcceptDragKind(kind)) return;
 				dragCounter--;
 				if (dragCounter <= 0) {
 					dragCounter = 0;
-					el.removeClass('drag-over-event');
-					el.removeClass('drag-over-event-top');
-					el.removeClass('drag-over-event-bottom');
-					el.removeClass('drag-over-chapter');
-					el.removeClass('drag-over');
+					clearDragClasses();
 				}
 			});
 
 			el.addEventListener('drop', (e) => {
-				if (el.hasClass('wn-timeline-gap') && e.dataTransfer?.types.includes('application/wn-timeline-event-time')) {
+				const kind = getTimelineDragKind(e.dataTransfer);
+				if (!canAcceptDragKind(kind)) return;
+				dragCounter = 0;
+				clearDragClasses();
+
+				if (kind === 'pending') {
+					e.preventDefault();
+					e.stopPropagation();
+					const pendingId = e.dataTransfer?.getData(DRAG_MIME_PENDING_ID);
+					if (!pendingId) return;
+					if (config.pendingInsertAnchor) {
+						const pendingEvent = findPendingById(pendingId);
+						if (!pendingEvent) return;
+						openInlineNewNodeForm(el, pendingEvent, config.pendingInsertAnchor);
+						return;
+					}
+					if (config.pendingInsertTarget) {
+						void handlePlacePendingIntoNode(
+							pendingId,
+							config.pendingInsertTarget.entryIndex,
+							config.pendingInsertTarget.itemIndex
+						);
+						return;
+					}
+					if (el.hasClass('wn-timeline-item-row') && targetEvents.length > 0) {
+						let targetIdx = targetEvents[0].itemIndex ?? 0;
+						if (isInsertAfter) targetIdx += 1;
+						void handlePlacePendingIntoNode(pendingId, targetEvents[0].entryIndex, targetIdx);
+					}
 					return;
 				}
-				dragCounter = 0;
-				el.removeClass('drag-over-event');
-				el.removeClass('drag-over-event-top');
-				el.removeClass('drag-over-event-bottom');
-				el.removeClass('drag-over-chapter');
-				el.removeClass('drag-over');
-				
-				if (e.dataTransfer?.types.includes('application/wn-timeline-event-time')) {
-					const sourceEntryIndex = Number(e.dataTransfer.getData('application/wn-timeline-entry-index'));
-					const sourceIdxStr = e.dataTransfer.getData('application/wn-timeline-event-index');
-					if (Number.isInteger(sourceEntryIndex) && sourceEntryIndex >= 0 && sourceIdxStr && targetEvents.length > 0) {
+
+				if (kind === 'event') {
+					const sourceEntryIndex = Number(e.dataTransfer?.getData(DRAG_MIME_ENTRY_INDEX));
+					const sourceIdxStr = e.dataTransfer?.getData(DRAG_MIME_EVENT_INDEX);
+					if (Number.isInteger(sourceEntryIndex) && sourceEntryIndex >= 0 && sourceIdxStr) {
 						e.preventDefault();
 						e.stopPropagation();
-						const sourceIdx = parseInt(sourceIdxStr);
-						
-						let targetIdx = targetEvents[0].itemIndex ?? 0;
-						if (targetIdx !== undefined && isInsertAfter) {
+						const sourceIdx = parseInt(sourceIdxStr, 10);
+
+						if (config.acceptScheduledEventToPending) {
+							void handleReturnEventToPending(sourceEntryIndex, sourceIdx);
+							return;
+						}
+
+						const targetEntryIdx = config.pendingInsertTarget?.entryIndex ?? targetEvents[0]?.entryIndex;
+						if (targetEntryIdx === undefined) return;
+						let targetIdx = config.pendingInsertTarget?.itemIndex ?? (targetEvents[0]?.itemIndex ?? 0);
+						if (el.hasClass('wn-timeline-item-row') && isInsertAfter) {
 							targetIdx += 1;
 						}
-						
-						// If trying to move to its own current position or the exact same spot after removal
-						if (sourceEntryIndex === targetEvents[0].entryIndex &&
-						   (sourceIdx === targetIdx || sourceIdx === targetIdx - 1)) {
-							return; 
+
+						if (sourceEntryIndex === targetEntryIdx &&
+							(sourceIdx === targetIdx || sourceIdx === targetIdx - 1)) {
+							return;
 						}
 
 						void (async () => {
@@ -422,23 +1084,15 @@ export class TimelineBoardRenderer {
 							onSaveStateChange(true);
 							try {
 								const sourceEntry = allEntries[sourceEntryIndex];
-								const targetEntry = allEntries[targetEvents[0].entryIndex];
+								const targetEntry = allEntries[targetEntryIdx];
 								const expectedItem = sourceEntry?.items?.[sourceIdx] ? { ...sourceEntry.items[sourceIdx] } : undefined;
-								const expectedSourceEntry: TimelineEntry | undefined = sourceEntry ? {
-									...sourceEntry,
-									lores: sourceEntry.lores ? [...sourceEntry.lores] : undefined,
-									items: sourceEntry.items ? sourceEntry.items.map(it => ({ ...it })) : undefined
-								} : undefined;
-								const expectedTargetEntry: TimelineEntry | undefined = targetEntry ? {
-									...targetEntry,
-									lores: targetEntry.lores ? [...targetEntry.lores] : undefined,
-									items: targetEntry.items ? targetEntry.items.map(it => ({ ...it })) : undefined
-								} : undefined;
+								const expectedSourceEntry: TimelineEntry | undefined = sourceEntry ? deepCloneEntry(sourceEntry) : undefined;
+								const expectedTargetEntry: TimelineEntry | undefined = targetEntry ? deepCloneEntry(targetEntry) : undefined;
 
 								await timelineManager.moveEventItem(
 									sourceEntryIndex,
 									sourceIdx,
-									targetEvents[0].entryIndex,
+									targetEntryIdx,
 									targetIdx,
 									bookFolder,
 									expectedItem,
@@ -456,7 +1110,9 @@ export class TimelineBoardRenderer {
 					return;
 				}
 
-				void handleDrop(e, targetEvents);
+				if (allowChapterDrop) {
+					void handleDrop(e, targetEvents);
+				}
 			});
 		};
 
@@ -547,6 +1203,21 @@ export class TimelineBoardRenderer {
 		}
 
 		if (displayEntries.length > 0) {
+			const firstDisplayEntry = displayEntries[0];
+			const firstEntryIndex = entryIndexByEntry.get(firstDisplayEntry);
+			if (firstEntryIndex !== undefined) {
+				const startSlot = mainCol.createDiv('wn-timeline-node-slot is-start');
+				setupPendingSlotDropzone(
+					startSlot,
+					!isDescending
+						? { beforeEntryIndex: firstEntryIndex, expectedBeforeEntry: deepCloneEntry(firstDisplayEntry) }
+						: { afterEntryIndex: firstEntryIndex, expectedAfterEntry: deepCloneEntry(firstDisplayEntry) }
+				);
+				if (canSortNodes) {
+					setupNodeDropzone(startSlot, firstEntryIndex, 'before');
+				}
+			}
+
 			for (let i = 0; i < displayEntries.length; i++) {
 				const entry = displayEntries[i];
 				const entryIndex = entryIndexByEntry.get(entry);
@@ -554,18 +1225,35 @@ export class TimelineBoardRenderer {
 
 				// 1. The main node container
 				const nodeDiv = mainCol.createDiv('wn-timeline-node');
+				if (canSortNodes) {
+					setupNodeDropzone(nodeDiv, entryIndex);
+				}
 				const titleDiv = nodeDiv.createDiv({ cls: 'wn-timeline-node-title' });
+				const nodeHandle = titleDiv.createSpan({
+					cls: canSortNodes ? 'wn-timeline-node-handle is-sortable' : 'wn-timeline-node-handle'
+				});
+				if (canSortNodes) {
+					setupNodeHandle(nodeHandle, nodeDiv, entryIndex);
+				}
 				if (entry.type) titleDiv.createSpan({ text: entry.type, cls: 'wn-timeline-type-badge' });
 				if (entry.lores && entry.lores.length > 0) {
 					const loreContainer = titleDiv.createSpan({ cls: 'wn-timeline-node-lore-badges' });
 					renderLoreBadges(loreContainer, entry.lores, bookFolder, plugin, true, 0);
 				}
-				const timeSpan = titleDiv.createSpan({ cls: 'wn-timeline-node-time-text', text: entry.time });
+				const displayTime = getTimelineNodeDisplayTime(entry);
+				const timeSpan = titleDiv.createSpan({
+					cls: entry.timePending ? 'wn-timeline-node-time-text is-time-pending' : 'wn-timeline-node-time-text',
+					text: displayTime
+				});
 				timeSpan.title = t('common.jump-to-entry');
 				timeSpan.onclick = async (e) => {
 					e.stopPropagation();
 					await openTimelineEntry(entry, entryIndex);
 				};
+				setupDropzone(titleDiv, [], {
+					pendingInsertTarget: { entryIndex, itemIndex: 0 },
+					allowChapterDrop: false
+				});
 
 				const editBtn = titleDiv.createEl('button', {
 					cls: 'clickable-icon wn-timeline-node-edit-btn'
@@ -643,11 +1331,25 @@ export class TimelineBoardRenderer {
 					})();
 				};
 
-				// 2. Render each item row (sub-lane)
-				const items: TimelineItem[] = entry.items && entry.items.length > 0
+				// 2. Render each item row (sub-lane) or empty structural node dropzone
+				const items: TimelineItem[] = entry.items !== undefined
 					? entry.items
-					: [{ description: entry.description, chapter: entry.chapter, important: entry.important }];
+					: (entry.description || entry.chapter || entry.origin || entry.important
+						? [{ description: entry.description, chapter: entry.chapter, origin: entry.origin, important: entry.important }]
+						: []);
 				const visibleItemIndices = items.map((_item, index) => index);
+
+				if (visibleItemIndices.length === 0) {
+					const emptyNodeZone = nodeDiv.createDiv({
+						cls: 'wn-timeline-empty-node-dropzone',
+						text: t('timeline.empty-node-hint')
+					});
+					setupDropzone(
+						emptyNodeZone,
+						[{ time: entry.time, entryIndex, itemIndex: 0 }],
+						{ pendingInsertTarget: { entryIndex, itemIndex: 0 } }
+					);
+				}
 
 				for (let visibleIndex = 0; visibleIndex < visibleItemIndices.length; visibleIndex++) {
 					const itemIdx = visibleItemIndices[visibleIndex];
@@ -656,10 +1358,10 @@ export class TimelineBoardRenderer {
 					itemRow.addEventListener('dragstart', (e) => {
 						if (e.dataTransfer) {
 							e.dataTransfer.effectAllowed = 'move';
-							e.dataTransfer.setData('application/wn-timeline-event-time', entry.time);
-							e.dataTransfer.setData('application/wn-timeline-entry-index', String(entryIndex));
-							e.dataTransfer.setData('application/wn-timeline-event-index', itemIdx.toString());
-							e.dataTransfer.setData('text/plain', `Event: ${entry.time}`);
+							e.dataTransfer.setData(DRAG_MIME_EVENT_TIME, entry.time);
+							e.dataTransfer.setData(DRAG_MIME_ENTRY_INDEX, String(entryIndex));
+							e.dataTransfer.setData(DRAG_MIME_EVENT_INDEX, itemIdx.toString());
+							e.dataTransfer.setData('text/plain', `Event: ${displayTime}`);
 						}
 						window.setTimeout(() => itemRow.addClass('is-dragging'), 0);
 					});
@@ -779,16 +1481,7 @@ export class TimelineBoardRenderer {
 						descEl.addClass('is-editing');
 						setupStickyNoteParagraphEditor(descEl, currentDesc);
 
-						descEl.focus({ preventScroll: true });
-						const ownerDocument = descEl.ownerDocument;
-						const selection = ownerDocument.defaultView?.getSelection();
-						if (selection) {
-							const range = ownerDocument.createRange();
-							range.selectNodeContents(descEl);
-							range.collapse(false);
-							selection.removeAllRanges();
-							selection.addRange(range);
-						}
+						focusTimelineDescriptionEnd(descEl);
 
 						const applyScroll = () => {
 							const newMaxScroll = Math.max(0, (descEl.scrollHeight ?? 0) - (descEl.clientHeight ?? 0));
@@ -902,7 +1595,11 @@ export class TimelineBoardRenderer {
 						const subGapKey = `GAP|${entryIndex}|${itemIdx}|${nextItemIdx}`;
 						const subGapDiv = nodeDiv.createDiv('wn-timeline-gap wn-timeline-sub-gap');
 						const subCardsContainer = subGapDiv.createDiv('wn-timeline-cards-container');
-						setupDropzone(subGapDiv, [{ time: entry.time, entryIndex, itemIndex: itemIdx }, { time: entry.time, entryIndex, itemIndex: nextItemIdx }]);
+						setupDropzone(
+							subGapDiv,
+							[{ time: entry.time, entryIndex, itemIndex: itemIdx }, { time: entry.time, entryIndex, itemIndex: nextItemIdx }],
+							{ pendingInsertTarget: { entryIndex, itemIndex: nextItemIdx } }
+						);
 
 						const filesInSubGap = fileGroups.get(subGapKey) || [];
 						CorkboardGridRenderer.render({
@@ -910,111 +1607,6 @@ export class TimelineBoardRenderer {
 						});
 					}
 				}
-
-				// ⊕ Add sub-event button
-				const addSubEventRow = nodeDiv.createDiv('wn-timeline-add-sub-event-row');
-				const addSubEventBtn = addSubEventRow.createEl('button', { text: t('corkboard.new-timeline-event'), cls: 'wn-timeline-add-sub-event-btn' });
-				addSubEventBtn.onclick = () => {
-					addSubEventRow.hide();
-					const itemRow = nodeDiv.insertBefore(createDiv('wn-timeline-item-row'), addSubEventRow);
-					const descShell = itemRow.createDiv('wn-timeline-item-desc-shell');
-					const descEl = descShell.createDiv({ cls: 'wn-timeline-item-desc is-editing' });
-					setupStickyNoteParagraphEditor(descEl, '');
-					itemRow.createDiv('wn-timeline-cards-container');
-
-					descEl.focus({ preventScroll: true });
-
-					let isComposing = false;
-					descEl.addEventListener('compositionstart', () => {
-						isComposing = true;
-					});
-					descEl.addEventListener('compositionend', () => {
-						isComposing = false;
-					});
-
-					let currentSavePromise: Promise<boolean> | null = null;
-					const saveSubEvent = (): Promise<boolean> => {
-						if (currentSavePromise) return currentSavePromise;
-
-						const savePromise = (async (): Promise<boolean> => {
-							const newVal = getPlaintextContent(descEl).trim();
-							if (!newVal) {
-								teardownStickyNoteParagraphEditor(descEl);
-								descEl.removeClass('is-editing');
-								itemRow.remove();
-								addSubEventRow.show();
-								return true;
-							}
-
-							onSaveStateChange(true);
-							try {
-								const originalIndex = allEntries.indexOf(entry);
-								const originalEntry = {
-									...entry,
-									lores: entry.lores ? [...entry.lores] : undefined,
-									items: entry.items ? entry.items.map(it => ({ ...it })) : undefined
-								};
-								const currentItems = entry.items && entry.items.length > 0
-									? entry.items.map(it => ({ ...it }))
-									: [{
-										description: entry.description || '',
-										chapter: entry.chapter || '',
-										important: entry.important
-									}];
-								const updatedItems = [
-									...currentItems,
-									{
-										description: newVal,
-										chapter: ''
-									}
-								];
-								const updatedEntry: TimelineEntry = {
-									...entry,
-									items: updatedItems
-								};
-								await timelineManager.updateEntry(originalIndex, updatedEntry, bookFolder, originalEntry);
-								entry.items = updatedItems;
-								teardownStickyNoteParagraphEditor(descEl);
-								descEl.removeClass('is-editing');
-								return true;
-							} catch (err) {
-								currentSavePromise = null;
-								Logger.error('[TimelineBoard] 添加子事件失败:', err);
-								return false;
-							} finally {
-								onSaveStateChange(false);
-							}
-						})();
-
-						const trackedPromise: Promise<boolean> = savePromise.finally(() => {
-							if (currentSavePromise === trackedPromise) {
-								currentSavePromise = null;
-							}
-						});
-
-						currentSavePromise = trackedPromise;
-						registerPendingInlineSave(currentSavePromise);
-
-						void currentSavePromise.then((success) => {
-							if (success) {
-								reloadBoard();
-							}
-						});
-
-						return currentSavePromise;
-					};
-
-					descEl.onblur = () => saveSubEvent();
-					descEl.onkeydown = (e: KeyboardEvent) => {
-						if (e.key === 'Enter' && !e.shiftKey) {
-							if (isComposing || e.isComposing || (e as { keyCode?: number }).keyCode === 229) {
-								return;
-							}
-							e.preventDefault();
-							descEl.blur();
-						}
-					};
-				};
 
 				// 3. Render Gap to next event if exists
 				if (i < displayEntries.length - 1) {
@@ -1024,7 +1616,30 @@ export class TimelineBoardRenderer {
 
 					const gapDiv = mainCol.createDiv('wn-timeline-gap');
 					const cardsContainer = gapDiv.createDiv('wn-timeline-cards-container');
-					setupDropzone(gapDiv, [{ time: entry.time, entryIndex, itemIndex: items.length - 1 }, { time: nextEntry.time, entryIndex: nextEntryIndex ?? -1, itemIndex: 0 }]);
+					const betweenAnchor: TimelineInsertAnchor | undefined = nextEntryIndex !== undefined
+						? (!isDescending
+							? {
+								afterEntryIndex: entryIndex,
+								expectedAfterEntry: deepCloneEntry(entry),
+								beforeEntryIndex: nextEntryIndex,
+								expectedBeforeEntry: deepCloneEntry(nextEntry)
+							}
+							: {
+								afterEntryIndex: nextEntryIndex,
+								expectedAfterEntry: deepCloneEntry(nextEntry),
+								beforeEntryIndex: entryIndex,
+								expectedBeforeEntry: deepCloneEntry(entry)
+							})
+						: undefined;
+					const lastItemIdx = Math.max(0, items.length - 1);
+					setupDropzone(
+						gapDiv,
+						[{ time: entry.time, entryIndex, itemIndex: lastItemIdx }, { time: nextEntry.time, entryIndex: nextEntryIndex ?? -1, itemIndex: 0 }],
+						{ pendingInsertAnchor: betweenAnchor }
+					);
+					if (canSortNodes) {
+						setupNodeDropzone(gapDiv, entryIndex, 'after');
+					}
 
 					const filesInGap = fileGroups.get(gapKey) || [];
 					CorkboardGridRenderer.render({
@@ -1032,10 +1647,26 @@ export class TimelineBoardRenderer {
 					});
 				}
 			}
+
+			const lastDisplayEntry = displayEntries[displayEntries.length - 1];
+			const lastEntryIndex = entryIndexByEntry.get(lastDisplayEntry);
+			if (lastEntryIndex !== undefined) {
+				const endSlot = mainCol.createDiv('wn-timeline-node-slot is-end');
+				setupPendingSlotDropzone(
+					endSlot,
+					!isDescending
+						? { afterEntryIndex: lastEntryIndex, expectedAfterEntry: deepCloneEntry(lastDisplayEntry) }
+						: { beforeEntryIndex: lastEntryIndex, expectedBeforeEntry: deepCloneEntry(lastDisplayEntry) }
+				);
+				if (canSortNodes) {
+					setupNodeDropzone(endSlot, lastEntryIndex, 'after');
+				}
+			}
 		} else {
 			mainCol.addClass('is-empty');
 			const emptyMsg = mainCol.createDiv('wn-timeline-empty-msg');
 			emptyMsg.setText(t('corkboard.no-timeline'));
+			setupPendingSlotDropzone(emptyMsg, { fallbackIndex: allEntries.length });
 		}
 
 		// Check if any multi-event links exist (chapter mapped to 2+ events)
@@ -1360,63 +1991,309 @@ export class TimelineBoardRenderer {
 			modal.open();
 		};
 
-		const isPhone = container.ownerDocument.body.classList.contains('is-phone');
-
-		if (isSidebarCollapsed && !isPhone) {
+		const isPhoneSidebar = container.ownerDocument.body.classList.contains('is-phone');
+		if (isSidebarCollapsed) {
 			sideCol.addClass('is-collapsed');
+			waterfallLayout.addClass('is-sidebar-collapsed');
 		}
+		if (unscheduled.length === 0) {
+			sideCol.addClass('is-unscheduled-empty');
+		}
+		const hasPendingEvents = pendingEvents.length > 0;
+		if (!hasPendingEvents) sideCol.addClass('is-pending-empty');
 
-		const toggleCollapse = (event?: Event) => {
-			if (event) {
+		const addSidebarToggle = (parent: HTMLElement, expanding: boolean) => {
+			const cls = expanding ? 'wn-timeline-sidebar-expand-handle' : 'wn-timeline-sidebar-collapse-btn';
+			const control = parent.createDiv('clickable-icon ' + cls);
+			control.setAttr('role', 'button');
+			control.setAttr('tabindex', '0');
+			control.setAttr('aria-expanded', expanding ? 'false' : 'true');
+			control.setAttr('aria-label', t(expanding ? 'corkboard.expand-sidebar' : 'corkboard.collapse-sidebar'));
+			const icon = isPhoneSidebar
+				? (expanding ? 'chevron-up' : 'chevron-down')
+				: (expanding ? 'chevron-left' : 'chevron-right');
+			setIcon(control, icon);
+
+			const toggleCollapse = (event: Event) => {
 				event.stopPropagation();
-			}
-			if (onToggleSidebarCollapse) {
-				onToggleSidebarCollapse();
-			}
+				onToggleSidebarCollapse?.();
+			};
+			control.onclick = toggleCollapse;
+			control.addEventListener('keydown', (event) => {
+				if (event.key !== 'Enter' && event.key !== ' ') return;
+				event.preventDefault();
+				toggleCollapse(event);
+			});
 		};
 
-		if (!isPhone) {
-			const expandHandle = sideCol.createDiv('clickable-icon wn-timeline-sidebar-expand-handle');
-			expandHandle.setAttr('role', 'button');
-			expandHandle.setAttr('tabindex', '0');
-			expandHandle.setAttr('aria-label', t('corkboard.expand-sidebar'));
-			setIcon(expandHandle, 'chevron-left');
-			expandHandle.onclick = (e) => toggleCollapse(e);
-			expandHandle.addEventListener('keydown', (event) => {
-				if (event.key === 'Enter' || event.key === ' ') {
-					event.preventDefault();
-					event.stopPropagation();
-					toggleCollapse(event);
+		addSidebarToggle(sideCol, true);
+
+		// Sidebar Dropzone: chapters return to unscheduled, scheduled events return to pending
+		setupDropzone(sideCol, [], { acceptScheduledEventToPending: true });
+
+		const panesContainer = sideCol.createDiv('wn-timeline-sidebar-panes');
+
+		// Pane 1: Pending Events (Desktop Top / Mobile Left)
+		const pendingPane = panesContainer.createDiv('wn-timeline-sidebar-pane wn-timeline-pending-pane');
+		const pendingHeader = pendingPane.createDiv('wn-timeline-sidebar-header wn-timeline-pending-header');
+		const pendingTitleGroup = pendingHeader.createDiv('wn-timeline-sidebar-title-group');
+		if (!isPhoneSidebar) {
+			addSidebarToggle(pendingTitleGroup, false);
+		} else if (unscheduled.length === 0) {
+			addSidebarToggle(pendingHeader, false);
+		}
+		pendingTitleGroup.createSpan({ text: t('timeline.pending-events') });
+		pendingTitleGroup.createSpan({ text: ` (${pendingEvents.length})`, cls: 'wn-timeline-sidebar-count' });
+
+		const quickAddRow = pendingPane.createDiv('wn-timeline-pending-quick-add');
+		const quickInput = quickAddRow.createEl('input', {
+			type: 'text',
+			cls: 'wn-timeline-pending-quick-input'
+		});
+		quickInput.placeholder = t('timeline.pending-quick-add-placeholder');
+		quickInput.setAttr('aria-label', t('timeline.pending-quick-add-placeholder'));
+		const quickAddButton = quickAddRow.createEl('button', {
+			type: 'button',
+			cls: 'wn-timeline-pending-quick-button',
+			text: t('common.add')
+		});
+		if (pendingInputDraft) {
+			quickInput.value = pendingInputDraft;
+		}
+		let isQuickComposing = false;
+		let isQuickSubmitting = false;
+		quickInput.addEventListener('input', () => {
+			onPendingInputDraftChange?.(quickInput.value);
+		});
+		quickInput.addEventListener('compositionstart', () => {
+			isQuickComposing = true;
+		});
+		quickInput.addEventListener('compositionend', () => {
+			isQuickComposing = false;
+		});
+		const submitPendingEvent = (allowEmpty: boolean) => {
+			if (isQuickComposing || isQuickSubmitting) return;
+			const rawValue = quickInput.value;
+			const trimmed = rawValue.trim();
+			if (!trimmed && !allowEmpty) return;
+			if (typeof timelineManager.addPendingEvent !== 'function') return;
+
+			isQuickSubmitting = true;
+			quickAddButton.disabled = true;
+			void (async () => {
+				if (pendingInlineSaves.size > 0) {
+					const inlineSaveOk = await awaitPendingInlineSaves();
+					if (!inlineSaveOk) {
+						isQuickSubmitting = false;
+						quickAddButton.disabled = false;
+						return;
+					}
 				}
-			});
+				onSaveStateChange(true);
+				let succeeded = false;
+				try {
+					await timelineManager.addPendingEvent!({ description: trimmed }, bookFolder);
+					succeeded = true;
+				} catch (err) {
+					const msg = err instanceof Error ? err.message : String(err);
+					showPluginNotice(t('modal.save-failed', { error: msg }));
+					Logger.error('[TimelineBoard] addPendingEvent 失败:', err);
+				} finally {
+					isQuickSubmitting = false;
+					quickAddButton.disabled = false;
+					onSaveStateChange(false);
+					if (succeeded) {
+						if (quickInput.value === rawValue) {
+							quickInput.value = '';
+							onPendingInputDraftChange?.('');
+						}
+						onRequestPendingInputFocus?.();
+						reloadBoard();
+					}
+				}
+			})();
+		};
+		quickAddButton.onclick = () => submitPendingEvent(true);
+		quickInput.addEventListener('keydown', (e: KeyboardEvent) => {
+			if (e.key !== 'Enter' || isQuickComposing || e.isComposing || (e as { keyCode?: number }).keyCode === 229) return;
+			e.preventDefault();
+			submitPendingEvent(false);
+		});
+
+		if (hasPendingEvents) {
+			const pendingList = pendingPane.createDiv('wn-timeline-pending-list');
+			for (const pendingEvent of pendingEvents) {
+				const card = pendingList.createDiv('wn-timeline-pending-card');
+				card.setAttribute('draggable', 'true');
+				card.setAttribute('data-pending-id', pendingEvent.id);
+				card.addEventListener('dragstart', (e) => {
+					if (e.dataTransfer) {
+						e.dataTransfer.effectAllowed = 'move';
+						e.dataTransfer.setData(DRAG_MIME_PENDING_ID, pendingEvent.id);
+						e.dataTransfer.setData('text/plain', `PendingEvent: ${pendingEvent.description}`);
+					}
+					card.addClass('is-dragging');
+				});
+				card.addEventListener('dragend', () => {
+					card.removeClass('is-dragging');
+				});
+
+				const pendingDescEl = card.createDiv({
+					cls: pendingEvent.description.trim() ? 'wn-timeline-item-desc' : 'wn-timeline-item-desc is-empty'
+				});
+				if (pendingEvent.description.trim()) {
+					setStickyNoteEditorContent(pendingDescEl, pendingEvent.description);
+				} else {
+					pendingDescEl.setText(t('modal.describe-event-placeholder'));
+				}
+
+				pendingDescEl.onclick = (e: MouseEvent) => {
+					e.stopPropagation();
+					if (pendingDescEl.hasClass('is-editing') || pendingDescEl.getAttribute('contenteditable') === 'plaintext-only') return;
+					const currentDesc = pendingEvent.description || '';
+					pendingDescEl.empty();
+					pendingDescEl.removeClass('is-empty');
+					pendingDescEl.addClass('is-editing');
+					setupStickyNoteParagraphEditor(pendingDescEl, currentDesc);
+					focusTimelineDescriptionEnd(pendingDescEl);
+
+					let currentSavePromise: Promise<boolean> | null = null;
+					const savePendingDesc = (): Promise<boolean> => {
+						if (currentSavePromise) return currentSavePromise;
+						const savePromise = (async (): Promise<boolean> => {
+							const newVal = getPlaintextContent(pendingDescEl).trim();
+							if (newVal === currentDesc) {
+								teardownStickyNoteParagraphEditor(pendingDescEl);
+								pendingDescEl.removeClass('is-editing');
+								if (!currentDesc) pendingDescEl.addClass('is-empty');
+								return true;
+							}
+							if (typeof timelineManager.updatePendingEvent !== 'function') return false;
+							onSaveStateChange(true);
+							try {
+								await timelineManager.updatePendingEvent(
+									pendingEvent.id,
+									{ description: newVal },
+									bookFolder,
+									deepClonePendingEvent(pendingEvent)
+								);
+								pendingEvent.description = newVal;
+								teardownStickyNoteParagraphEditor(pendingDescEl);
+								pendingDescEl.removeClass('is-editing');
+								if (!newVal) pendingDescEl.addClass('is-empty');
+								return true;
+							} catch (err) {
+								currentSavePromise = null;
+								Logger.error('[TimelineBoard] updatePendingEvent 失败:', err);
+								return false;
+							} finally {
+								onSaveStateChange(false);
+							}
+						})();
+
+						const tracked: Promise<boolean> = savePromise.finally(() => {
+							if (currentSavePromise === tracked) currentSavePromise = null;
+						});
+						currentSavePromise = tracked;
+						registerPendingInlineSave(tracked);
+						void tracked.then((ok) => {
+							if (ok) reloadBoard();
+						});
+						return tracked;
+					};
+
+					pendingDescEl.onblur = () => savePendingDesc();
+				};
+
+				if (pendingEvent.chapter) {
+					const chapters = parseTimelineChapterList(pendingEvent.chapter);
+					if (chapters.length > 0) {
+						const chapterBadges = card.createDiv('wn-timeline-pending-card-chapters');
+						for (const ch of chapters) {
+							chapterBadges.createSpan({
+								cls: 'wn-timeline-pending-chapter-pill',
+								text: ChapterSorter.extractWikilinkDisplay(ch)
+							});
+						}
+					}
+				}
+
+				const actions = card.createDiv('wn-timeline-item-actions');
+				createCardImportanceButton({
+					container: actions,
+					isImportant: Boolean(pendingEvent.important),
+					cardEl: pendingDescEl,
+					onToggle: async (important) => {
+						if (pendingInlineSaves.size > 0 && !await awaitPendingInlineSaves()) {
+							throw new Error('Timeline inline save failed');
+						}
+						if (typeof timelineManager.updatePendingEvent !== 'function') return;
+						onSaveStateChange(true);
+						try {
+							const save = timelineManager.updatePendingEvent(
+								pendingEvent.id, { important }, bookFolder, deepClonePendingEvent(pendingEvent)
+							).then(() => { pendingEvent.important = important; });
+							registerPendingInlineSave(save.then(() => true, () => false));
+							await save;
+						} finally {
+							onSaveStateChange(false);
+						}
+					}
+				});
+
+				const deletePendingBtn = actions.createEl('button', {
+					cls: 'clickable-icon wn-timeline-item-delete-btn',
+					attr: { type: 'button', 'aria-label': t('common.delete'), draggable: 'false' }
+				});
+				setIcon(deletePendingBtn, 'trash');
+				deletePendingBtn.addEventListener('dragstart', (e) => {
+					e.preventDefault();
+					e.stopPropagation();
+				});
+				deletePendingBtn.onclick = (e: MouseEvent) => {
+					e.stopPropagation();
+					new ConfirmDeleteEventModal(app, t('modal.confirm-delete-event'), () => {
+						void (async () => {
+							if (typeof timelineManager.deletePendingEvent !== 'function') return;
+							if (pendingInlineSaves.size > 0) {
+								const inlineSaveOk = await awaitPendingInlineSaves();
+								if (!inlineSaveOk) return;
+							}
+							onSaveStateChange(true);
+							try {
+								await timelineManager.deletePendingEvent(
+									pendingEvent.id,
+									bookFolder,
+									deepClonePendingEvent(pendingEvent)
+								);
+							} catch (err) {
+								Logger.error('[TimelineBoard] deletePendingEvent 失败:', err);
+							} finally {
+								onSaveStateChange(false);
+								reloadBoard();
+							}
+						})();
+					}).open();
+				};
+			}
 		}
 
-		// Sidebar: Unscheduled (未关联章节侧边栏/底部悬浮抽屉窗)
-		const unscheduledHeader = sideCol.createDiv('wn-timeline-sidebar-header');
+		// Pane 2: Unscheduled Chapters (Desktop Bottom / Mobile Right)
+		const unscheduledPane = panesContainer.createDiv({
+			cls: unscheduled.length === 0
+				? 'wn-timeline-sidebar-pane wn-timeline-unscheduled-pane is-empty'
+				: 'wn-timeline-sidebar-pane wn-timeline-unscheduled-pane'
+		});
+		const unscheduledHeader = unscheduledPane.createDiv('wn-timeline-sidebar-header wn-timeline-unscheduled-header');
 		const titleGroup = unscheduledHeader.createDiv('wn-timeline-sidebar-title-group');
-		if (!isPhone) {
-			const collapseBtn = titleGroup.createDiv('clickable-icon wn-timeline-sidebar-collapse-btn');
-			collapseBtn.setAttr('role', 'button');
-			collapseBtn.setAttr('tabindex', '0');
-			collapseBtn.setAttr('aria-label', t('corkboard.collapse-sidebar'));
-			setIcon(collapseBtn, 'chevron-right');
-			collapseBtn.onclick = (e) => toggleCollapse(e);
-			collapseBtn.addEventListener('keydown', (event) => {
-				if (event.key === 'Enter' || event.key === ' ') {
-					event.preventDefault();
-					event.stopPropagation();
-					toggleCollapse(event);
-				}
-			});
-		} else {
-			const iconSpan = titleGroup.createSpan({ cls: 'wn-timeline-sidebar-icon' });
-			setIcon(iconSpan, 'help-circle');
-		}
 		titleGroup.createSpan({ text: t('corkboard.unscheduled-chapters') });
 		// 始终展示未关联章节的数量（包含 0），提升作者概览与归还槽感知
 		titleGroup.createSpan({ text: ` (${unscheduled.length})`, cls: 'wn-timeline-sidebar-count' });
 
-		const sortToggle = unscheduledHeader.createDiv('clickable-icon wn-workbench-sort-toggle');
+		const headerActions = isPhoneSidebar && unscheduled.length > 0
+			? unscheduledHeader.createDiv('wn-timeline-sidebar-header-actions')
+			: unscheduledHeader;
+		const sortToggle = headerActions.createDiv('clickable-icon wn-workbench-sort-toggle');
 		sortToggle.setAttr('role', 'button');
 		sortToggle.setAttr('tabindex', '0');
 		const label = isUnscheduledDescending ? t('corkboard.sort-descending') : t('corkboard.sort-ascending');
@@ -1441,12 +2318,12 @@ export class TimelineBoardRenderer {
 			}
 		});
 
-		setupDropzone(sideCol, []); // Drag back to sidebar to remove timeline
-		const sideGrid = sideCol.createDiv('wn-corkboard-grid');
-
-		if (unscheduled.length === 0) {
-			sideCol.addClass('is-empty');
+		if (headerActions !== unscheduledHeader) {
+			addSidebarToggle(headerActions, false);
 		}
+
+		const unscheduledList = unscheduledPane.createDiv('wn-timeline-unscheduled-list');
+		const sideGrid = unscheduledList.createDiv('wn-corkboard-grid');
 
 		const displayUnscheduled = getDeterministicChapterDisplayOrder(unscheduled, {
 			currentBookPath,
@@ -1457,9 +2334,12 @@ export class TimelineBoardRenderer {
 
 		CorkboardGridRenderer.render({
 			app, plugin, container: sideGrid, files: displayUnscheduled, foreshadowingMap, draggable: true, currentBookPath, onSaveStateChange,
-			groupVolumeCards: isPhone
+			groupVolumeCards: false
 		});
+		if (sideGrid.children[0]?.classList.contains('wn-corkboard-volume-header')) {
+			unscheduledList.addClass('is-volume-first');
+		}
 
-		Logger.info(`[Perf] TimelineBoardRenderer.render completed in ${(performance.now() - tStart).toFixed(2)}ms (${displayEntries.length} entries, ${files.length} total files, ${unscheduled.length} unscheduled)`);
+		Logger.info(`[Perf] TimelineBoardRenderer.render completed in ${(performance.now() - tStart).toFixed(2)}ms (${displayEntries.length} entries, ${pendingEvents.length} pending, ${files.length} total files, ${unscheduled.length} unscheduled)`);
 	}
 }

@@ -477,7 +477,7 @@ describe('PluginBootstrapper', () => {
 				expect(mockPlugin.refreshFolderCounts).toHaveBeenCalled();
 			});
 
-			it('should configure custom rules and enable file explorer patcher on layout ready when smart chapter sort is enabled', () => {
+			it('enables the mobile patcher without compiling chapter rules again', () => {
 				mockPlugin.settings.enableSmartChapterSort = true;
 				mockPlugin.settings.chapterNamingRules = [{ name: 'Standard', pattern: '^第(\\d+)章', enabled: true }];
 				const setCustomRulesSpy = vi.spyOn(ChapterSorter, 'setCustomRules');
@@ -485,7 +485,7 @@ describe('PluginBootstrapper', () => {
 				const bootstrapper = new PluginBootstrapper(mockPlugin, registry);
 				bootstrapper.setupMobileFeatures();
 
-				expect(setCustomRulesSpy).toHaveBeenCalledWith(mockPlugin.settings.chapterNamingRules);
+				expect(setCustomRulesSpy).not.toHaveBeenCalled();
 				layoutReadyCallbacks.forEach(cb => cb());
 				expect(mockFileExplorerPatcher.enable).toHaveBeenCalled();
 			});
@@ -635,7 +635,7 @@ describe('PluginBootstrapper', () => {
 				expect(mockObsStart).not.toHaveBeenCalled();
 			});
 
-			it('should configure custom rules and enable file explorer patcher on layout ready when enableSmartChapterSort is true', () => {
+			it('enables the desktop patcher without compiling chapter rules again', () => {
 				mockPlugin.settings.enableSmartChapterSort = true;
 				mockPlugin.settings.chapterNamingRules = [{ name: 'Standard', pattern: '^第(\\d+)章', enabled: true }];
 				const setCustomRulesSpy = vi.spyOn(ChapterSorter, 'setCustomRules');
@@ -643,21 +643,17 @@ describe('PluginBootstrapper', () => {
 				const bootstrapper = new PluginBootstrapper(mockPlugin, registry);
 				bootstrapper.setupDesktopFeatures();
 
-				expect(setCustomRulesSpy).toHaveBeenCalledWith(mockPlugin.settings.chapterNamingRules);
+				expect(setCustomRulesSpy).not.toHaveBeenCalled();
 				layoutReadyCallbacks.forEach(cb => cb());
 				expect(mockFileExplorerPatcher.enable).toHaveBeenCalled();
 			});
 		});
 
 		describe('shared floating stats behavior', () => {
-			it('should instantiate MobileFloatingStats, load on layout ready, and register event/interval listeners owned by plugin', () => {
-				let intervalCallback: (() => void) | null = null;
-				const setIntervalSpy = vi.fn((callback: () => void, _interval?: number) => {
-					intervalCallback = callback;
-					return 404;
-				});
+			it('should instantiate MobileFloatingStats, load on layout ready, and avoid redundant intervals or duplicate event listeners', () => {
+				const setIntervalSpy = vi.fn();
 				vi.stubGlobal('window', {
-			console: globalThis.console,
+					console: globalThis.console,
 					moment: Object.assign(() => ({ format: () => '2026-08-20' }), {
 						locale: () => 'zh-cn'
 					}),
@@ -678,48 +674,86 @@ describe('PluginBootstrapper', () => {
 				layoutReadyCallbacks.forEach(cb => cb());
 				expect(mockFloatingStatsLoad).toHaveBeenCalled();
 
-				// Check editor-change event
-				expect(workspaceEventHandlers['editor-change']).toBeDefined();
-				workspaceEventHandlers['editor-change'][0]();
-				expect(mockAdaptiveDebounceManager.debounce).toHaveBeenCalledWith(
-					'mobile-stats-update',
-					expect.any(Function)
-				);
-				expect(mockFloatingStatsUpdate).toHaveBeenCalled();
+				// No 1s tracking interval should be registered by mobile floating stats
+				expect(setIntervalSpy).not.toHaveBeenCalledWith(expect.any(Function), 1000);
+				expect(mockPlugin.registerInterval).not.toHaveBeenCalled();
+			});
 
-				// Check workbench-book-changed event
-				// Check workbench-book-changed event handlers
-				const bookChangeHandlers = workspaceEventHandlers['webnovel-workbench-book-changed'];
-				expect(bookChangeHandlers).toBeDefined();
-				expect(bookChangeHandlers.length).toBe(1);
+			it('routes writes through the editor tracker and refreshes runtime-enabled floating stats on task change', async () => {
+				const pendingDebounces = new Map<string, () => void>();
+				mockAdaptiveDebounceManager.debounce = vi.fn((key: string, fn: () => void) => {
+					pendingDebounces.set(key, fn);
+				});
 
-				// Mobile floating stats handler should ONLY update stats
-				(mockPlugin.refreshStatusViews as ReturnType<typeof vi.fn>).mockClear();
-				mockEditorTracker.handleFileChange.mockClear();
+				const bootstrapper = new PluginBootstrapper(mockPlugin, registry);
+				bootstrapper.registerConstructorServices();
+
+				mockPlugin.historyManager = { loadHistory: vi.fn().mockResolvedValue(undefined) } as unknown as HistoryDataManager;
+				mockPlugin.cacheManager.loadCache = vi.fn().mockResolvedValue(undefined);
+				mockPlugin.loreSyncService = { initialize: vi.fn() } as unknown as LoreSyncService;
+				mockPlugin.characterManager = { initialize: vi.fn().mockResolvedValue(undefined) } as unknown as CharacterManager;
+				mockPlugin.proofreadingManager = { initialize: vi.fn().mockResolvedValue(undefined) } as unknown as ProofreadingManager;
+				mockPlugin.fileEventManager = { setup: vi.fn() } as unknown as FileEventManager;
+				mockPlugin.statisticsManager = { setup: vi.fn() } as unknown as StatisticsManager;
+				mockPlugin.workerManager = {
+					setup: vi.fn(),
+					handleEditorChange: vi.fn(),
+					handleActiveFileChange: vi.fn(),
+					handleFileRename: vi.fn()
+				} as unknown as WorkerManager;
+				mockPlugin.markdownPostProcessor = { getProcessor: vi.fn() } as unknown as MarkdownPostProcessor;
+				mockPlugin.typographyManager = { updateTypography: vi.fn() } as unknown as TypographyManager;
+				mockPlugin.commandManager = { registerAllCommands: vi.fn() } as unknown as CommandManager;
+				mockPlugin.viewManager = { registerAllViews: vi.fn() } as unknown as ViewManager;
+				mockPlugin.menuManager = { registerAllMenus: vi.fn() } as unknown as MenuManager;
+				mockPlugin.registerMarkdownPostProcessor = vi.fn();
+				mockPlugin.addStatusBarItem = vi.fn().mockReturnValue({});
+				Object.assign(mockPlugin.app, {
+					metadataCache: { on: vi.fn(() => ({})) }
+				});
+
+				// Start with null mobileFloatingStats (disabled at boot)
+				mockPlugin.mobileFloatingStats = null;
+				await bootstrapper.bootstrap();
+
+				// Simulate enabling mobileFloatingStats at runtime
+				mockPlugin.mobileFloatingStats = {
+					update: mockFloatingStatsUpdate,
+					updateTimerUI: vi.fn(),
+					load: mockFloatingStatsLoad,
+					unload: vi.fn()
+				} as unknown as MobileFloatingStats;
+
 				mockFloatingStatsUpdate.mockClear();
-				bookChangeHandlers[0]();
-				expect(mockPlugin.refreshStatusViews).not.toHaveBeenCalled();
-				expect(mockEditorTracker.handleFileChange).not.toHaveBeenCalled();
-				expect(mockFloatingStatsUpdate).toHaveBeenCalled();
 
-				// Check active-leaf-change event
-				expect(workspaceEventHandlers['active-leaf-change']).toBeDefined();
-				workspaceEventHandlers['active-leaf-change'][0]();
-				expect(mockFloatingStatsUpdate).toHaveBeenCalled();
+				// 1. Trigger editor-change and flush debounce
+				const editorHandlers = workspaceEventHandlers['editor-change'] || [];
+				editorHandlers[0]?.(null, { file: { path: 'Chap1.md' } });
+				const flushEditor = pendingDebounces.get('editor-update');
+				flushEditor?.();
+				expect(mockPlugin.editorTracker.handleEditorChange).toHaveBeenCalledOnce();
+				expect(mockFloatingStatsUpdate).not.toHaveBeenCalled();
 
-				// Check 1s interval registration
-				expect(setIntervalSpy).toHaveBeenCalledWith(expect.any(Function), 1000);
-				expect(mockPlugin.registerInterval).toHaveBeenCalledWith(404);
-
-				// When tracking is active, interval callback updates stats
+				// 2. Trigger webnovel-workbench-book-changed
 				mockFloatingStatsUpdate.mockClear();
-				(intervalCallback as (() => void) | null)?.();
-				expect(mockFloatingStatsUpdate).toHaveBeenCalled();
+				const bookHandlers = workspaceEventHandlers['webnovel-workbench-book-changed'] || [];
+				vi.mocked(mockPlugin.editorTracker.handleFileChange).mockClear();
+				bookHandlers[0]?.();
+				expect(mockPlugin.editorTracker.handleFileChange).toHaveBeenCalledOnce();
+				expect(mockFloatingStatsUpdate).not.toHaveBeenCalled();
 
-				// When tracking is inactive, interval callback does not update stats
-				mockPlugin.isTracking = false;
+				// 3. Trigger webnovel:tasks-changed
 				mockFloatingStatsUpdate.mockClear();
-				(intervalCallback as (() => void) | null)?.();
+				const taskHandlers = workspaceEventHandlers['webnovel:tasks-changed'] || [];
+				taskHandlers[0]?.();
+				expect(mockFloatingStatsUpdate).toHaveBeenCalledTimes(1);
+
+				// 4. Trigger active-leaf-change
+				mockFloatingStatsUpdate.mockClear();
+				const leafHandlers = workspaceEventHandlers['active-leaf-change'] || [];
+				vi.mocked(mockPlugin.editorTracker.handleFileChange).mockClear();
+				for (const h of leafHandlers) h?.(null);
+				expect(mockPlugin.editorTracker.handleFileChange).toHaveBeenCalledOnce();
 				expect(mockFloatingStatsUpdate).not.toHaveBeenCalled();
 			});
 
@@ -1588,8 +1622,8 @@ describe('PluginBootstrapper', () => {
 			const refInfo = { file: mainFile, editor: refEditor };
 
 			mockPlugin.immersiveModeManager = {
-				isMobileImmersiveSessionActive: () => true,
-				getActiveSessionMainFile: () => mainFile,
+				isMobileDataIsolationActive: () => true,
+				getDataScopedMainFile: () => mainFile,
 				isMainEditorOrigin: (info: unknown, editor?: unknown) => info === mainInfo || editor === mainEditor
 			} as unknown as BootstrapperHost['immersiveModeManager'];
 

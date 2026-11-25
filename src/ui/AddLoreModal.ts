@@ -1,7 +1,7 @@
 import { showPluginNotice } from '../services/PluginNoticeService';
 import { Modal, Setting, TFile, setTooltip, setIcon } from 'obsidian';
 import type { App, TextComponent, TFolder, ButtonComponent } from 'obsidian';
-import type { CharacterManager, LoreCategoryOption } from '../services/CharacterManager';
+import { collectExistingLoreTypes, type CharacterManager, type LoreCategoryOption } from '../services/CharacterManager';
 import { t } from '../i18n';
 import { FileSuggestModal } from './FileSuggestModal';
 import {
@@ -80,30 +80,6 @@ export class AddLoreModal extends Modal {
 	 */
 	findLoreFolder(): TFolder | null {
 		return this.plugin.characterManager.findLoreFolder(this.bookPath);
-	}
-
-	/**
-	 * 扫描设定文件夹中现有所有 md 文件，提取已存在的设定类型
-	 */
-	async collectExistingTypes(files: TFile[]): Promise<string[]> {
-		const typesSet = new Set<string>();
-		for (const file of files) {
-			try {
-				const content = await this.app.vault.cachedRead(file);
-				const matches = content.matchAll(/(?:\*\*|__)?(?:类型|類型|Type)(?:\*\*|__)?\s*[:：]\s*([^\n]+)/gi);
-				for (const match of matches) {
-					if (match[1]) {
-						const typeVal = match[1].trim();
-						if (typeVal) {
-							typesSet.add(typeVal);
-						}
-					}
-				}
-			} catch {
-				// 忽略读取异常
-			}
-		}
-		return Array.from(typesSet);
 	}
 
 	private isHistoryActionDisabled(): boolean {
@@ -463,7 +439,7 @@ export class AddLoreModal extends Modal {
 		const existingFiles = this.availableCategories
 			.map(c => c.file)
 			.filter((f): f is TFile => f instanceof TFile);
-		const existingTypes = await this.collectExistingTypes(existingFiles);
+		const existingTypes = await collectExistingLoreTypes(this.app.vault, existingFiles);
 		if (this.isModalClosed) return;
 
 		this.loreType = '';

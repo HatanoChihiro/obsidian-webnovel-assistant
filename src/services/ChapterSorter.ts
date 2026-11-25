@@ -217,35 +217,22 @@ export class ChapterSorter {
 	 * 并限制模式长度，降低灾难性回溯（ReDoS）导致 UI 冻结的风险。
 	 */
 	static setCustomRules(rules: ChapterNamingRule[]) {
+		this._compiledRules = [];
 		this.customRules = rules.filter(rule => {
-			// 禁用的规则跳过验证
 			if (!rule.enabled) return true;
-
-			// [安全] 限制正则长度，过于复杂的模式更易触发灾难性回溯
 			if (rule.pattern.length > 200) {
 				Logger.warn(`[ChapterSorter] 正则表达式过长（>200字符），已跳过: "${rule.name}"`);
 				return false;
 			}
-
-			// [安全] 预编译验证语法，语法错误的规则直接丢弃，避免运行时每次排序都抛出异常
 			try {
-				new RegExp(rule.pattern, 'i');
+				const regex = new RegExp(rule.pattern, 'i');
+				this._compiledRules.push({ rule, regex, index: this._compiledRules.length });
 				return true;
 			} catch {
 				Logger.error(`[ChapterSorter] 无效的正则表达式，已跳过规则 "${rule.name}": ${rule.pattern}`);
 				return false;
 			}
 		});
-
-		this._compiledRules = [];
-		for (let i = 0; i < this.customRules.length; i++) {
-			const rule = this.customRules[i];
-			if (rule.enabled) {
-				try {
-					this._compiledRules.push({ rule, regex: new RegExp(rule.pattern, 'i'), index: i });
-				} catch { /* ignore */ }
-			}
-		}
 	}
 
 	/**

@@ -1,6 +1,6 @@
 import { showPluginNotice } from '../../services/PluginNoticeService';
 import type { App, TFile } from 'obsidian';
-import { setIcon } from 'obsidian';
+import { MarkdownRenderChild, setIcon } from 'obsidian';
 import type { TaskEntry } from '../../types/task';
 import type { NovelFolderInfo } from '../../types/homepage';
 import type { AccurateCountSettings, DailyStat } from '../../types/settings';
@@ -67,6 +67,57 @@ export interface HomepageRendererPlugin
 	getTrackedMarkdownFiles(): TFile[];
 }
 
+export class HomepageRenderChild extends MarkdownRenderChild {
+	private observer: ResizeObserver | null = null;
+	private generation = 0;
+	private disposed = false;
+	private leafContent: Element | null = null;
+
+	constructor(containerEl: HTMLElement, private renderer: HomepageRenderer, private onDispose: () => void) {
+		super(containerEl);
+	}
+
+	onload(): void {
+		if (this.disposed) return;
+		this.containerEl.classList.add('webnovel-homepage-root');
+		this.leafContent = this.containerEl.closest('.workspace-leaf-content');
+		this.leafContent?.classList.add('is-webnovel-homepage');
+	}
+
+	onunload(): void {
+		this.dispose();
+	}
+
+	dispose(): void {
+		if (this.disposed) return;
+		this.disposed = true;
+		this.observer?.disconnect();
+		this.observer = null;
+		this.containerEl.classList.remove('webnovel-homepage-root');
+		if (this.leafContent && !this.leafContent.querySelector('.webnovel-homepage-root')) {
+			this.leafContent.classList.remove('is-webnovel-homepage');
+		}
+		this.leafContent = null;
+		this.onDispose();
+	}
+
+	async render(): Promise<void> {
+		if (this.disposed) return;
+		const generation = ++this.generation;
+		const isCurrent = () => !this.disposed && this.generation === generation;
+		this.observer?.disconnect();
+		this.observer = null;
+		const updateLayout = await this.renderer.renderHomepage(this.containerEl, isCurrent);
+		if (!updateLayout || !isCurrent() || !this.containerEl.isConnected) return;
+		const win = this.containerEl.ownerDocument.defaultView;
+		if (!win) return;
+		this.observer = new win.ResizeObserver(() => {
+			if (isCurrent()) updateLayout();
+		});
+		this.observer.observe(this.containerEl);
+	}
+}
+
 export class HomepageRenderer {
 	private app: App;
 	private plugin: HomepageRendererPlugin;
@@ -87,7 +138,7 @@ export class HomepageRenderer {
 	}
 
 	// 主页整体网格布局：顶部(欢迎+连载中) + 左列(其他作品) + 右列(数据)
-	async renderHomepage(container: HTMLElement): Promise<void> {
+	async renderHomepage(container: HTMLElement, isCurrent = () => true): Promise<(() => void) | undefined> {
 		container.empty();
 
 		const grid = container.createDiv({ cls: 'wn-homepage-grid-container' });
@@ -96,11 +147,12 @@ export class HomepageRenderer {
 		const topRow = grid.createDiv({ cls: 'wn-homepage-grid-top' });
 		const welcomeCell = topRow.createDiv({ cls: 'wn-homepage-grid-cell' });
 		try {
-			await this.renderWelcome(welcomeCell);
+			await this.renderWelcome(welcomeCell, isCurrent);
 		} catch (e) {
 			console.error('[WebNovel] Error rendering welcome cell:', e);
 		}
 
+		if (!isCurrent()) return;
 		const novelsPromise = this.getAllNovelsWithMetadata();
 		const ongoingCell = topRow.createDiv({ cls: 'wn-homepage-grid-cell' });
 		try {
@@ -110,6 +162,7 @@ export class HomepageRenderer {
 		}
 
 		// 底部左列：其他作品区块
+		if (!isCurrent()) return;
 		const leftCol = grid.createDiv({ cls: 'wn-homepage-grid-left' });
 		const draftingCell = leftCol.createDiv({ cls: 'wn-homepage-grid-cell' });
 		try {
@@ -118,6 +171,7 @@ export class HomepageRenderer {
 			console.error('[WebNovel] Error rendering drafting cell:', e);
 		}
 
+		if (!isCurrent()) return;
 		const pausedCell = leftCol.createDiv({ cls: 'wn-homepage-grid-cell' });
 		try {
 			await this.renderPaused(pausedCell, novelsPromise);
@@ -125,6 +179,7 @@ export class HomepageRenderer {
 			console.error('[WebNovel] Error rendering paused cell:', e);
 		}
 
+		if (!isCurrent()) return;
 		const completedCell = leftCol.createDiv({ cls: 'wn-homepage-grid-cell' });
 		try {
 			await this.renderCompleted(completedCell, novelsPromise);
@@ -133,6 +188,7 @@ export class HomepageRenderer {
 		}
 
 		// 底部右列：数据区块
+		if (!isCurrent()) return;
 		const rightCol = grid.createDiv({ cls: 'wn-homepage-grid-right' });
 		const statsCell = rightCol.createDiv({ cls: 'wn-homepage-grid-cell' });
 		try {
@@ -141,6 +197,7 @@ export class HomepageRenderer {
 			console.error('[WebNovel] Error rendering stats summary:', e);
 		}
 
+		if (!isCurrent()) return;
 		const heatmapCell = rightCol.createDiv({ cls: 'wn-homepage-grid-cell' });
 		try {
 			this.renderHeatmap(heatmapCell);
@@ -155,28 +212,12 @@ export class HomepageRenderer {
 			console.error('[WebNovel] Error rendering bar chart:', e);
 		}
 
-		// ResizeObserver：根据编辑器面板宽度动态切换单列/双列布局
+		if (!isCurrent()) return;
 		const updateLayout = () => {
-			const width = container.clientWidth;
-			// 将阈值从 1200 降低到 800，避免稍微放大字体或缩小窗口就变成单列
-			if (width < 800) {
-				grid.addClass('wn-homepage-single-column');
-			} else {
-				grid.removeClass('wn-homepage-single-column');
-			}
+			grid.classList.toggle('wn-homepage-single-column', container.clientWidth < 800);
 		};
 		updateLayout();
-		const viewDom = container.closest('.markdown-source-view') || container.closest('.markdown-preview-view');
-		if (viewDom) {
-			const VIEW_OBS_KEY = '__webnovel_homepage_resize_obs__';
-			const viewDomAny = viewDom as unknown as Record<string, ResizeObserver | undefined>;
-			if (viewDomAny[VIEW_OBS_KEY]) {
-				viewDomAny[VIEW_OBS_KEY]?.disconnect();
-			}
-			const resizeObs = new ResizeObserver(() => updateLayout());
-			resizeObs.observe(viewDom);
-			viewDomAny[VIEW_OBS_KEY] = resizeObs;
-		}
+		return updateLayout;
 	}
 
 	// 欢迎语 + 今日进度 + 新增作品按钮
@@ -219,7 +260,7 @@ export class HomepageRenderer {
 	}
 
 	// 欢迎语 + 今日进度 + 新增作品按钮
-	async renderWelcome(container: HTMLElement): Promise<void> {
+	async renderWelcome(container: HTMLElement, isCurrent = () => true): Promise<void> {
 		container.empty();
 
 		const section = container.createDiv({ cls: 'wn-homepage-welcome-section' });
@@ -273,6 +314,7 @@ export class HomepageRenderer {
 			if (cached === null) {
 				try {
 					const content = await this.app.vault.cachedRead(file);
+					if (!isCurrent()) return;
 					cached = this.plugin.calculateAccurateWords(content);
 					this.plugin.cacheManager.updateFileCache(file, cached, this.app.vault);
 				} catch {
@@ -406,9 +448,7 @@ export class HomepageRenderer {
 			const nameEl = heading.createDiv({ cls: 'wn-homepage-completed-name' });
 			nameEl.textContent = displayName;
 			nameEl.onclick = () => void this.navigateToNovel(novel.folderPath);
-			if (novel.metadata?.series?.trim()) {
-				heading.createSpan({ cls: 'wn-badge wn-homepage-series-badge', text: novel.metadata.series.trim() });
-			}
+			heading.createSpan({ cls: 'wn-badge wn-homepage-series-badge', text: novel.metadata?.series?.trim() || t('homepage.no-series') });
 
 			this.createFieldEl(card, t('homepage.field-total-words'), novel.wordCount.toLocaleString());
 			this.createFieldEl(card, getNovelInfoLabel('genre'), novel.metadata?.genre || '--');
@@ -441,9 +481,7 @@ export class HomepageRenderer {
 			const nameEl = heading.createDiv({ cls: 'wn-homepage-completed-name' });
 			nameEl.textContent = displayName;
 			nameEl.onclick = () => void this.navigateToNovel(novel.folderPath);
-			if (novel.metadata?.series?.trim()) {
-				heading.createSpan({ cls: 'wn-badge wn-homepage-series-badge', text: novel.metadata.series.trim() });
-			}
+			heading.createSpan({ cls: 'wn-badge wn-homepage-series-badge', text: novel.metadata?.series?.trim() || t('homepage.no-series') });
 
 			this.createFieldEl(card, t('homepage.field-total-words'), novel.wordCount.toLocaleString());
 			this.createFieldEl(card, getNovelInfoLabel('genre'), novel.metadata?.genre || '--');
@@ -476,9 +514,7 @@ export class HomepageRenderer {
 			const nameEl = heading.createDiv({ cls: 'wn-homepage-completed-name' });
 			nameEl.textContent = displayName;
 			nameEl.onclick = () => void this.navigateToNovel(novel.folderPath);
-			if (novel.metadata?.series?.trim()) {
-				heading.createSpan({ cls: 'wn-badge wn-homepage-series-badge', text: novel.metadata.series.trim() });
-			}
+			heading.createSpan({ cls: 'wn-badge wn-homepage-series-badge', text: novel.metadata?.series?.trim() || t('homepage.no-series') });
 
 			this.createFieldEl(card, t('homepage.field-total-words'), novel.wordCount.toLocaleString());
 			this.createFieldEl(card, getNovelInfoLabel('genre'), novel.metadata?.genre || '--');

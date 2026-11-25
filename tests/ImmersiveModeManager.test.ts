@@ -15,6 +15,14 @@ vi.mock('obsidian', () => {
 		empty: ReturnType<typeof vi.fn>;
 		addClass: ReturnType<typeof vi.fn>;
 		removeClass: ReturnType<typeof vi.fn>;
+		toggleClass: ReturnType<typeof vi.fn>;
+		classList: {
+			add: ReturnType<typeof vi.fn>;
+			remove: ReturnType<typeof vi.fn>;
+			toggle: ReturnType<typeof vi.fn>;
+			contains: ReturnType<typeof vi.fn>;
+		};
+		hidden: boolean;
 		createDiv: ReturnType<typeof vi.fn>;
 		createSpan: ReturnType<typeof vi.fn>;
 		createEl: ReturnType<typeof vi.fn>;
@@ -28,10 +36,24 @@ vi.mock('obsidian', () => {
 		_onClick?: () => void;
 	};
 	const createMockElement = (): MockElement => {
+		const classes = new Set<string>();
+		const classList = {
+			add: vi.fn((...c: string[]) => c.forEach(x => classes.add(x))),
+			remove: vi.fn((...c: string[]) => c.forEach(x => classes.delete(x))),
+			toggle: vi.fn((c: string, force?: boolean) => {
+				const has = force !== undefined ? force : !classes.has(c);
+				if (has) classes.add(c); else classes.delete(c);
+				return has;
+			}),
+			contains: vi.fn((c: string) => classes.has(c))
+		};
 		const el: MockElement = {
 			empty: vi.fn(),
-			addClass: vi.fn().mockReturnThis(),
-			removeClass: vi.fn().mockReturnThis(),
+			addClass: vi.fn((...c: string[]) => { classList.add(...c); return el; }),
+			removeClass: vi.fn((...c: string[]) => { classList.remove(...c); return el; }),
+			toggleClass: vi.fn((c: string, force?: boolean) => { classList.toggle(c, force); return el; }),
+			classList,
+			hidden: false,
 			createDiv: vi.fn(() => createMockElement()),
 			createSpan: vi.fn((opts?: { cls?: string; text?: string }) => {
 				const span = createMockElement();
@@ -66,25 +88,28 @@ vi.mock('obsidian', () => {
     }
 
     class MockSetting {
+		settingEl: MockElement;
 		controlEl: MockElement;
 		_name = '';
 		_desc = '';
 		_isHeading = false;
-		_toggle?: { value: boolean; onChange?: (v: boolean) => Promise<void> | void };
+		_toggle?: { value: boolean; disabled: boolean; onChange?: (v: boolean) => Promise<void> | void };
 		_dropdown?: { options: Array<{ value: string; label: string }>; value: string; onChange?: (v: string) => Promise<void> | void };
 		_slider?: { min: number; max: number; step: number; value: number; onChange?: (v: number) => Promise<void> | void };
 		static instances: MockSetting[] = [];
 		constructor(public containerEl: unknown) {
+			this.settingEl = createMockElement();
 			this.controlEl = createMockElement();
 			MockSetting.instances.push(this);
 		}
         setName(name: string) { this._name = name; return this; }
         setDesc(desc: string) { this._desc = desc; return this; }
         setHeading() { this._isHeading = true; return this; }
-		addToggle(cb: (toggle: Record<'setValue' | 'onChange', ReturnType<typeof vi.fn>>) => unknown) {
-			const state: { value: boolean; onChange?: (v: boolean) => Promise<void> | void } = { value: false };
+		addToggle(cb: (toggle: Record<'setValue' | 'setDisabled' | 'onChange', ReturnType<typeof vi.fn>>) => unknown) {
+			const state: { value: boolean; disabled: boolean; onChange?: (v: boolean) => Promise<void> | void } = { value: false, disabled: false };
 			const toggle = {
 				setValue: vi.fn((v: boolean) => { state.value = v; return toggle; }),
+				setDisabled: vi.fn((d: boolean) => { state.disabled = d; return toggle; }),
 				onChange: vi.fn((fn: (v: boolean) => Promise<void> | void) => { state.onChange = fn; return toggle; })
 			};
 			cb(toggle);
@@ -113,6 +138,38 @@ vi.mock('obsidian', () => {
 			};
 			cb(slider);
 			this._slider = state;
+			return this;
+		}
+		setClass() { return this; }
+		addText(cb: (text: Record<string, unknown>) => unknown) {
+			const inputEl = Object.assign(createMockElement(), { addEventListener: vi.fn(), blur: vi.fn(), value: '' });
+			const text = {
+				inputEl,
+				setPlaceholder: vi.fn().mockReturnThis(),
+				setValue: vi.fn().mockReturnThis(),
+				onChange: vi.fn().mockReturnThis()
+			};
+			cb(text);
+			return this;
+		}
+		addTextArea(cb: (area: Record<string, unknown>) => unknown) {
+			const inputEl = Object.assign(createMockElement(), { addEventListener: vi.fn(), blur: vi.fn(), value: '', rows: 3 });
+			const area = {
+				inputEl,
+				setPlaceholder: vi.fn().mockReturnThis(),
+				setValue: vi.fn().mockReturnThis(),
+				onChange: vi.fn().mockReturnThis()
+			};
+			cb(area);
+			return this;
+		}
+		addExtraButton(cb: (btn: Record<string, unknown>) => unknown) {
+			const btn = {
+				setIcon: vi.fn().mockReturnThis(),
+				setTooltip: vi.fn().mockReturnThis(),
+				onClick: vi.fn().mockReturnThis()
+			};
+			cb(btn);
 			return this;
 		}
 		addButton(cb: (button: MockButton) => unknown) {
@@ -147,9 +204,12 @@ vi.mock('obsidian', () => {
         Setting: MockSetting,
         ToggleComponent: class {
             _value = false;
+            _disabled = false;
+            toggleEl = { setAttribute: vi.fn() };
             _onChange?: (v: boolean) => Promise<void> | void;
             setValue(v: boolean) { this._value = v; return this; }
             getValue() { return this._value; }
+            setDisabled(v: boolean) { this._disabled = v; return this; }
             setTooltip() { return this; }
             onChange(cb: (v: boolean) => Promise<void> | void) { this._onChange = cb; return this; }
         }
@@ -2992,6 +3052,59 @@ describe('ImmersiveModeManager - Fullscreen & Esc Block', () => {
             expect(immersive.typewriterEnabled).toBe(true);
         });
 
+        it('shows the desktop manuscript switch by default and hides it independently of manuscript mode', async () => {
+            const immersive = mockPlugin.settings.immersive;
+            immersive.manuscriptModeEnabled = true;
+            manager['createTopBar']();
+
+            const controls = manager['manuscriptControlsEl'];
+            const toggle = manager['manuscriptToggle'];
+            expect(controls?.isShown()).toBe(true);
+            expect(toggle?.getValue()).toBe(true);
+            expect(toggle?.toggleEl.setAttribute).toHaveBeenCalledWith('aria-label', t('immersive.manuscript-toggle-label'));
+
+            immersive.immersiveShowManuscriptControl = false;
+            await manager['renderTopBarContent']();
+            expect(controls?.isShown()).toBe(false);
+            expect(immersive.manuscriptModeEnabled).toBe(true);
+
+            immersive.manuscriptModeEnabled = false;
+            immersive.immersiveShowManuscriptControl = true;
+            await manager['renderTopBarContent']();
+            expect(controls?.isShown()).toBe(true);
+            expect(toggle?.getValue()).toBe(false);
+        });
+
+        it('uses the manuscript mode lifecycle for both desktop switch actions and restores the switch after an unsuccessful enable', async () => {
+            manager['isImmersiveActive'] = true;
+            manager['createTopBar']();
+            const immersive = mockPlugin.settings.immersive;
+            const toggle = manager['manuscriptToggle'] as unknown as GearToggle & { _disabled: boolean; getValue(): boolean };
+            let finishToggle!: (enabled: boolean) => void;
+            const handle = vi.spyOn(manager, 'handleManuscriptModeSettingChanged').mockImplementationOnce(
+                () => new Promise(resolve => { finishToggle = resolve; })
+            );
+
+            const enabling = toggle._onChange!(true);
+            expect(toggle._disabled).toBe(true);
+            expect(immersive.manuscriptModeEnabled).toBe(true);
+            expect(handle).toHaveBeenLastCalledWith(true);
+            finishToggle(true);
+            await enabling;
+            expect(toggle.getValue()).toBe(true);
+            expect(toggle._disabled).toBe(false);
+
+            await toggle._onChange!(false);
+            expect(handle).toHaveBeenLastCalledWith(false);
+            expect(toggle.getValue()).toBe(false);
+
+            await toggle._onChange!(true);
+            expect(immersive.manuscriptModeEnabled).toBe(false);
+            expect(toggle.getValue()).toBe(false);
+            expect(toggle._disabled).toBe(false);
+            expect(mockPlugin.saveSettings).toHaveBeenCalled();
+        });
+
         it('creates typewriter toggle and settings gear button with is-hidden when initially disabled', () => {
             mockPlugin.settings.immersive.typewriterEnabled = false;
             manager['createTopBar']();
@@ -4760,8 +4873,8 @@ describe('ImmersiveModeManager - Mobile immersive lifecycle, lock/geometry and i
                 rule.walkDecls(decl => { mobileValueStyles[decl.prop] = decl.value; });
             }
         });
-        expect(mobileDataStyles['flex-wrap']).toBe('nowrap');
-        expect(mobileDataStyles['font-size']).toContain('--wn-immersive-mobile-stats-font-size');
+        expect(mobileDataStyles['flex-wrap']).toBe('wrap');
+        expect(mobileDataStyles['font-size']).toBeUndefined();
         expect(mobileDataStyles['overflow-x']).toBeUndefined();
         expect(mobileDataStyles['overflow-y']).toBeUndefined();
         expect(mobileValueStyles['white-space']).toBe('nowrap');
@@ -5707,6 +5820,7 @@ describe('ImmersiveModeManager - Mobile immersive follow-up regressions', () => 
             hide: () => { el.hidden = true; },
             isShown: () => !el.hidden,
             empty: () => { children.length = 0; },
+            appendText: (txt: string) => { el.textContent += txt; },
             remove: () => {
                 const p = el.parentElement as DomEl | null;
                 if (p?.children) { const i = p.children.indexOf(el); if (i >= 0) p.children.splice(i, 1); }
@@ -5946,74 +6060,141 @@ describe('ImmersiveModeManager - Mobile immersive follow-up regressions', () => 
         };
     };
 
-    it('keeps read-only data, quick settings and exit in the mobile topbar and starts/stops focus with the session', async () => {
+    it('renders two-row accent mobile topbar, hides native Capacitor StatusBar during fullscreen session, and renders title-free colored pills on row 2', async () => {
         const h = await setupMobileHarness();
+        const statusBarHide = vi.fn().mockResolvedValue(undefined);
+        const statusBarShow = vi.fn().mockResolvedValue(undefined);
+        const origRestoreNav = vi.fn();
+        const origOnScroll = vi.fn();
+        const mobileNavbar = {
+            onScroll: origOnScroll,
+            hideNavigation: vi.fn(),
+            restoreNavigation: origRestoreNav
+        };
+        (h.mockWin as unknown as { Capacitor?: unknown }).Capacitor = {
+            getPlatform: () => 'android',
+            isNativePlatform: () => true,
+            Plugins: { StatusBar: { hide: statusBarHide, show: statusBarShow } }
+        };
+        (h.mockPlugin.app as unknown as { mobileNavbar?: unknown }).mobileNavbar = mobileNavbar;
+        h.bodyEl.classList.add('is-hidden-nav');
+        (h.mockPlugin.settings.immersive as unknown as { mobileDashboardItems?: string[] }).mobileDashboardItems = [
+            'totalTime', 'focusTime', 'slackTime', 'chapterProgress', 'sessionSpeed'
+        ];
         const workPath = vi.spyOn(h.mockPlugin.immersiveReferenceManager, 'getWorkPath').mockReturnValue('Novels/Example Work');
         try {
             await h.mgr.toggleImmersiveMode();
-            const title = h.bodyEl.findByClass('wn-immersive-mobile-work-title');
-            expect(title).not.toBeNull();
-            expect(title!.textContent).toBe('Example Work');
-            expect(h.bodyEl.findByClass('wn-immersive-mobile-topbar')!.children[0] === title).toBe(true);
-            expect(h.bodyEl.findByClass('wn-immersive-mobile-topbar-stats')!.children.includes(title!)).toBe(false);
+            expect(statusBarHide).toHaveBeenCalledTimes(1);
+            expect(h.bodyEl.classList.contains('wn-immersive-mobile-fullscreen')).toBe(true);
+            expect(h.bodyEl.classList.contains('is-hidden-nav')).toBe(false);
+            // Native mobileNavbar scroll/restore calls during session are suppressed
+            mobileNavbar.onScroll();
+            mobileNavbar.restoreNavigation();
+            expect(origOnScroll).not.toHaveBeenCalled();
+            expect(origRestoreNav).not.toHaveBeenCalled();
+            expect(statusBarShow).not.toHaveBeenCalled();
+
+            const bar = h.bodyEl.findByClass('wn-immersive-mobile-topbar')!;
+            const headerRow = h.bodyEl.findByClass('wn-immersive-mobile-topbar-header')!;
+            const statsRow = h.bodyEl.findByClass('wn-immersive-mobile-topbar-stats')!;
+            expect(headerRow).not.toBeNull();
+            expect(statsRow).not.toBeNull();
+            expect(bar.children[0]).toBe(headerRow);
+            expect(bar.children[1]).toBe(statsRow);
+
+            const title = h.bodyEl.findByClass('wn-immersive-mobile-work-title')!;
+            expect(headerRow.children[0]).toBe(title);
+            expect(title.textContent).toBe('Example Work');
+            expect(statsRow.children.includes(title)).toBe(false);
+
             workPath.mockReturnValue('Novels/Another Work');
             h.mgr.refreshMobileTopBar();
-            expect(title!.textContent).toBe('Another Work');
+            expect(title.textContent).toBe('Another Work');
             workPath.mockReturnValue('');
             h.mgr.refreshMobileTopBar();
-            expect(title!.hidden).toBe(true);
-            expect(title!.textContent).toBe('');
-            const bar = h.bodyEl.findByClass('wn-immersive-mobile-topbar')!;
+            expect(title.hidden).toBe(true);
+            expect(title.textContent).toBe('');
+
             const descendants = (node: DomEl): DomEl[] => [node, ...node.children.flatMap(descendants)];
-            const buttons = descendants(bar).filter(node => node.tagName === 'BUTTON');
-            expect(buttons).toHaveLength(2);
-            expect(buttons[0].classList.contains('wn-immersive-mobile-settings-btn')).toBe(true);
-            expect(buttons[1].classList.contains('wn-immersive-mobile-exit-btn')).toBe(true);
+            const headerButtons = descendants(headerRow).filter(node => node.tagName === 'BUTTON');
+            expect(headerButtons).toHaveLength(2);
+            expect(headerButtons[0].classList.contains('wn-immersive-mobile-settings-btn')).toBe(true);
+            expect(headerButtons[1].classList.contains('wn-immersive-mobile-exit-btn')).toBe(true);
+            expect(descendants(statsRow).filter(node => node.tagName === 'BUTTON')).toHaveLength(0);
             expect(descendants(bar).some(node => node.tagName === 'SELECT')).toBe(false);
+
             const stats = h.mockPlugin.statisticsManager.getCoreStats();
             vi.mocked(h.mockPlugin.statisticsManager.getCoreStats).mockReturnValue({
-                ...stats, todayWords: 123456789, percent: 100, sessionSpeed: 987654
+                ...stats,
+                totalTime: '01:20:00',
+                focusTime: '01:00:00',
+                slackTime: '00:20:00',
+                todayWords: 1500,
+                goal: 3000
             });
-            const speedSource = h.mockPlugin.statisticsManager as typeof h.mockPlugin.statisticsManager & {
-                getSessionSpeed(): number;
-            };
-            vi.spyOn(speedSource, 'getSessionSpeed').mockReturnValue(987654);
             h.mgr.refreshMobileTopBar();
-            expect(h.bodyEl.findByClass('wn-immersive-mobile-word-count')!.textContent)
-                .toContain((123456789).toLocaleString());
-            expect(h.bodyEl.findByClass('wn-immersive-mobile-progress')!.textContent).toBe('100%');
-            expect(h.bodyEl.findByClass('wn-immersive-mobile-speed')!.textContent).toContain('987654');
-            expect(h.bodyEl.findByClass('wn-immersive-mobile-timer')!.hidden).toBe(false);
-            expect(h.bodyEl.findByClass('wn-immersive-mobile-timer-text')!.textContent).toMatch(/^\d+:\d{2}:\d{2}$/);
+            const visiblePills = statsRow.children.filter(c => !c.classList.contains('is-hidden'));
+            expect(visiblePills).toHaveLength(5);
+            expect(visiblePills.map(c => c.textContent)).toEqual(['01:20:00', '01:00:00', '00:20:00', '1500/3000', '0 字/时']);
+            expect(visiblePills[0].classList.contains('is-focus')).toBe(false);
+            expect(visiblePills[0].classList.contains('is-slack')).toBe(false);
+            expect(visiblePills[1].classList.contains('is-focus')).toBe(true);
+            expect(visiblePills[2].classList.contains('is-slack')).toBe(true);
+
             expect(h.mockPlugin.startTracking).toHaveBeenCalledTimes(1);
-            expect(h.bodyEl.findByClass('wn-immersive-mobile-dir-restore-btn')).not.toBeNull();
             await h.mgr.exitImmersiveMode();
             expect(h.mockPlugin.stopTracking).toHaveBeenCalledTimes(1);
+            expect(statusBarShow).toHaveBeenCalledTimes(1);
+            expect(h.bodyEl.classList.contains('wn-immersive-mobile-fullscreen')).toBe(false);
+            // Original mobileNavbar methods are restored on exit
+            mobileNavbar.restoreNavigation();
+            expect(origRestoreNav).toHaveBeenCalledTimes(1);
         } finally {
             h.restorePlatform();
         }
     });
 
-    it('shrinks single-row topbar text for available width and restores the normal font after widening', async () => {
+    it('keeps native navigation intact when the status bar cannot be restored', async () => {
         const h = await setupMobileHarness();
+        const hide = vi.fn();
+        const mobileNavbar = {
+            onScroll: vi.fn(),
+            hideNavigation: vi.fn(),
+            restoreNavigation: vi.fn()
+        };
+        const onScroll = mobileNavbar.onScroll;
+        (h.mockWin as unknown as { Capacitor?: unknown }).Capacitor = {
+            getPlatform: () => 'android',
+            Plugins: { StatusBar: { hide } }
+        };
+        (h.mockPlugin.app as unknown as { mobileNavbar?: unknown }).mobileNavbar = mobileNavbar;
+        h.bodyEl.classList.add('is-hidden-nav');
+        try {
+            await h.mgr.toggleImmersiveMode();
+            expect(h.bodyEl.classList.contains('wn-immersive-mobile-fullscreen')).toBe(false);
+            expect(h.bodyEl.classList.contains('is-hidden-nav')).toBe(true);
+            expect(mobileNavbar.onScroll).toBe(onScroll);
+            expect(hide).not.toHaveBeenCalled();
+        } finally {
+            await h.mgr.exitImmersiveMode();
+            h.restorePlatform();
+        }
+    });
+
+    it('renders all selected items in their canonical order', async () => {
+        const h = await setupMobileHarness();
+        (h.mockPlugin.settings.immersive as unknown as { mobileDashboardItems?: string[] }).mobileDashboardItems = [
+            'totalTime', 'focusTime', 'slackTime', 'chapterProgress', 'dailyProgress', 'sessionSpeed'
+        ];
         try {
             await h.mgr.toggleImmersiveMode();
             const stats = h.bodyEl.findByClass('wn-immersive-mobile-topbar-stats')!;
-            stats.clientWidth = 160;
-            let naturalWidth = 420;
-            const fontSize = () => Number.parseFloat(stats.style['--wn-immersive-mobile-stats-font-size'] || '14');
-            Object.defineProperty(stats, 'scrollWidth', { get: () => Math.ceil(naturalWidth * fontSize() / 14) });
             h.mgr.refreshMobileTopBar();
-            expect(fontSize()).toBeLessThan(14);
-            expect(stats.scrollWidth).toBeLessThanOrEqual(160);
-            const firstSize = fontSize();
-            naturalWidth = 700;
-            h.mgr.refreshMobileTopBarTimer();
-            expect(fontSize()).toBeLessThan(firstSize);
-            expect(stats.scrollWidth).toBeLessThanOrEqual(160);
-            stats.clientWidth = 800;
-            h.mgr.getMobileController()!.syncViewportMetrics();
-            expect(fontSize()).toBe(14);
+            const visiblePills = stats.children.filter(c => !c.classList.contains('is-hidden'));
+            expect(visiblePills).toHaveLength(6);
+            expect(visiblePills.map(c => c.getAttribute('data-stat-key'))).toEqual([
+                'totalTime', 'focusTime', 'slackTime', 'chapterProgress', 'dailyProgress', 'sessionSpeed'
+            ]);
             await h.mgr.exitImmersiveMode();
         } finally { h.restorePlatform(); }
     });
@@ -6101,7 +6282,7 @@ describe('ImmersiveModeManager - Mobile immersive follow-up regressions', () => 
             dock!.dispatch('click', { stopPropagation: vi.fn() });
             await Promise.resolve();
             expect(ctrl.getAuxState()).toMatchObject({ isDocked: true, x: 24, y: 90, width: 300, height: 290 });
-            expect(ctrl.getRenderedAuxRect()).toMatchObject({ x: 724, y: 44, width: 300, height: 800 });
+            expect(ctrl.getRenderedAuxRect()).toMatchObject({ x: 724, y: 68, width: 300, height: 776 });
             expect(h.bodyEl.style['--wn-immersive-mobile-dock-width']).toBe('300px');
             expect(h.mockPlugin.settings.immersive.mobileAuxPanel).toMatchObject({ isDocked: true });
             const header = h.bodyEl.findByClass('wn-immersive-mobile-aux-header')!;
@@ -6115,13 +6296,13 @@ describe('ImmersiveModeManager - Mobile immersive follow-up regressions', () => 
             move({ pointerId: 11, clientX: 684, clientY: 250, preventDefault: vi.fn() });
             end({ pointerId: 11 });
             expect(ctrl.getAuxState()).toMatchObject({ width: 340, height: 290 });
-            expect(ctrl.getRenderedAuxRect()).toMatchObject({ x: 684, width: 340, height: 800 });
+            expect(ctrl.getRenderedAuxRect()).toMatchObject({ x: 684, width: 340, height: 776 });
             expect(h.bodyEl.style['--wn-immersive-mobile-dock-width']).toBe('340px');
             h.visualViewport.height = 300;
             h.visualViewport.width = 500;
             h.mockWin.innerWidth = 500;
             ctrl.syncViewportMetrics();
-            expect(ctrl.getRenderedAuxRect()).toMatchObject({ x: 250, width: 250, height: 256 });
+            expect(ctrl.getRenderedAuxRect()).toMatchObject({ x: 250, width: 250, height: 232 });
             expect(ctrl.getAuxState()).toMatchObject({ width: 340, height: 290 });
             h.visualViewport.height = 844;
             h.visualViewport.width = 1024;
@@ -6219,8 +6400,9 @@ describe('ImmersiveModeManager - Mobile immersive follow-up regressions', () => 
         const { Setting } = await import('obsidian');
         const settings = Setting as unknown as { instances: Array<{
             _name: string;
+            settingEl?: { hidden?: boolean; classList?: { contains: (cls: string) => boolean } };
             _toggle?: { onChange?: (value: boolean) => Promise<void> | void };
-            _slider?: { onChange?: (value: number) => Promise<void> | void };
+            _slider?: { min: number; max: number; step: number; onChange?: (value: number) => Promise<void> | void };
         }> };
         const h = await setupMobileHarness();
         try {
@@ -6249,6 +6431,29 @@ describe('ImmersiveModeManager - Mobile immersive follow-up regressions', () => 
             await manuscript(true);
             expect(handle).toHaveBeenCalledWith(true);
             expect(h.mockPlugin.settings.immersive.manuscriptModeEnabled).toBe(true);
+
+            // Left punch-hole compatibility toggle & slider
+            const topBar = h.bodyEl.findByClass('wn-immersive-mobile-topbar')!;
+            expect(topBar.style['--wn-immersive-mobile-cutout-left-offset']).toBe('0px');
+            const cutoutToggle = find('setting.immersive-mobile-cutout-avoidance');
+            const cutoutSlider = find('setting.immersive-mobile-cutout-offset');
+            expect(cutoutSlider.settingEl?.hidden).toBe(true);
+            expect(cutoutSlider._slider).toMatchObject({ min: 0, max: 150, step: 2 });
+
+            await cutoutToggle._toggle!.onChange!(true);
+            expect(h.mockPlugin.settings.immersive.mobileCutoutAvoidance).toBe(true);
+            expect(cutoutSlider.settingEl?.hidden).toBe(false);
+            expect(topBar.style['--wn-immersive-mobile-cutout-left-offset']).toBe('36px');
+
+            await cutoutSlider._slider!.onChange!(150);
+            expect(h.mockPlugin.settings.immersive.mobileCutoutLeftOffset).toBe(150);
+            expect(topBar.style['--wn-immersive-mobile-cutout-left-offset']).toBe('150px');
+
+            await cutoutToggle._toggle!.onChange!(false);
+            expect(h.mockPlugin.settings.immersive.mobileCutoutAvoidance).toBe(false);
+            expect(cutoutSlider.settingEl?.hidden).toBe(true);
+            expect(topBar.style['--wn-immersive-mobile-cutout-left-offset']).toBe('0px');
+
             const close = vi.spyOn(state.activeSettingsModal!, 'close');
             await h.mgr.exitImmersiveMode();
             expect(close).toHaveBeenCalledTimes(1);
@@ -6279,12 +6484,14 @@ describe('ImmersiveModeManager - Mobile immersive follow-up regressions', () => 
         };
 
         const topbarCss = declsFor('.wn-immersive-mobile-topbar');
+        expect(topbarCss['background']).toContain('--interactive-accent');
+        expect(topbarCss['color']).toContain('--text-on-accent');
         expect(topbarCss['padding-top']).toContain('--safe-area-inset-top');
-        expect(topbarCss['padding-top']).toContain('env(safe-area-inset-top');
         expect(topbarCss['padding-left']).toContain('--safe-area-inset-left');
         expect(topbarCss['padding-right']).toContain('--safe-area-inset-right');
-        expect(topbarCss['min-height']).toContain('44px');
-        expect(topbarCss['min-height']).toContain('--safe-area-inset-top');
+
+        const fullscreenTopbarCss = declsFor('body.wn-immersive-mobile-fullscreen .wn-immersive-mobile-topbar');
+        expect(fullscreenTopbarCss['padding-top']).toBe('0');
 
         const dirOverlayCss = declsFor('.wn-immersive-mobile-dir-overlay');
         expect(dirOverlayCss['padding-left']).toContain('--safe-area-inset-left');
@@ -6294,8 +6501,7 @@ describe('ImmersiveModeManager - Mobile immersive follow-up regressions', () => 
         expect(dirRestoreCss['left']).toContain('--safe-area-inset-left');
 
         const mobileWsCss = declsFor('body.wn-immersive-mode-active.wn-immersive-mobile-active .app-container.app-container .workspace.workspace');
-        expect(mobileWsCss['padding-bottom']).toContain('--safe-area-inset-bottom');
-        expect(mobileWsCss['padding-bottom']).toContain('env(safe-area-inset-bottom');
+        expect(mobileWsCss['padding-bottom']).toBe('0');
 
         const h = await setupMobileHarness({
             safeAreaVars: {
@@ -6310,32 +6516,32 @@ describe('ImmersiveModeManager - Mobile immersive follow-up regressions', () => 
         try {
             await h.mgr.toggleImmersiveMode();
             const ctrl = h.mgr.getMobileController()!;
-            // Stub offsetHeight is 44, host safe top is 32 -> measured height must cover 44 + 32 = 76
-            expect(h.bodyEl.style['--wn-immersive-mobile-topbar-height']).toBe('76px');
+            // Non-Capacitor fallback: safeTop (32) + row1 (36) + row2 (32) = 100
+            expect(h.bodyEl.style['--wn-immersive-mobile-topbar-height']).toBe('100px');
             let rect = ctrl.getRenderedAuxRect()!;
-            expect(rect.y).toBeGreaterThanOrEqual(76 + 8);
+            expect(rect.y).toBeGreaterThanOrEqual(100 + 8);
             expect(rect.x).toBeGreaterThanOrEqual(16 + 8);
             expect(rect.x + rect.width).toBeLessThanOrEqual(390 - 12 - 8);
             expect(rect.y + rect.height).toBeLessThanOrEqual(844 - 24 - 8);
 
-            // Real browser where offsetHeight ALREADY includes padding-top (76px): must NOT double-count 76 + 32
+            // Real browser where offsetHeight ALREADY includes padding-top (100px): must NOT double-count 100 + 32
             const topBarEl = h.bodyEl.findByClass('wn-immersive-mobile-topbar')!;
-            topBarEl.offsetHeight = 76;
+            topBarEl.offsetHeight = 100;
             ctrl.syncViewportMetrics(true);
-            expect(h.bodyEl.style['--wn-immersive-mobile-topbar-height']).toBe('76px');
+            expect(h.bodyEl.style['--wn-immersive-mobile-topbar-height']).toBe('100px');
 
             // Orientation / safe-area change to landscape: must not cumulatively shift
             h.safeAreaVars['--safe-area-inset-top'] = '0px';
             h.safeAreaVars['--safe-area-inset-left'] = '48px';
             h.safeAreaVars['--safe-area-inset-right'] = '48px';
             h.safeAreaVars['--safe-area-inset-bottom'] = '20px';
-            topBarEl.offsetHeight = 44;
+            topBarEl.offsetHeight = 68;
             h.mockWin.innerWidth = 844;
             h.mockWin.innerHeight = 390;
             h.visualViewport.width = 844;
             h.visualViewport.height = 390;
             for (const fn of h.vvListeners.get('resize') ?? []) fn();
-            expect(h.bodyEl.style['--wn-immersive-mobile-topbar-height']).toBe('44px');
+            expect(h.bodyEl.style['--wn-immersive-mobile-topbar-height']).toBe('68px');
             rect = ctrl.getRenderedAuxRect()!;
             expect(rect.x).toBeGreaterThanOrEqual(48 + 8);
             expect(rect.x + rect.width).toBeLessThanOrEqual(844 - 48 - 8);
@@ -6356,12 +6562,12 @@ describe('ImmersiveModeManager - Mobile immersive follow-up regressions', () => 
         }
     });
 
-    it('keeps auxiliary enablement in settings and component selection and locking in the floating panel', async () => {
+    it('keeps auxiliary enablement, moves floating stats toggle into immersive tab, and enforces max 4 mobile dashboard items without touching desktop booleans', async () => {
         const { Setting } = await import('obsidian');
         const MockSetting = Setting as unknown as {
             instances: Array<{
                 _name: string;
-                _toggle?: { value: boolean; onChange?: (v: boolean) => Promise<void> | void };
+                _toggle?: { value: boolean; disabled: boolean; onChange?: (v: boolean) => Promise<void> | void };
                 _dropdown?: { options: Array<{ value: string; label: string }>; value: string; onChange?: (v: string) => Promise<void> | void };
                 _slider?: { min: number; max: number; step: number; value: number; onChange?: (v: number) => Promise<void> | void };
             }>;
@@ -6376,16 +6582,64 @@ describe('ImmersiveModeManager - Mobile immersive follow-up regressions', () => 
                 x: 24, y: 90, width: 310, height: 290
             }
         });
+        h.mockPlugin.settings.immersive.immersiveShowTotalTime = true;
+        h.mockPlugin.settings.immersive.immersiveShowSlackTime = true;
 
         try {
             const tab = new AccurateCountSettingTab(h.mockPlugin.app as never, h.mockPlugin as never);
+            const generalContainer = makeEl('div', 'general');
+            MockSetting.instances = [];
+            (tab as unknown as { displayGeneralSettings: (c: unknown) => void }).displayGeneralSettings(generalContainer);
+            expect(MockSetting.instances.some(s => s._name === t('setting.show-floating-stats'))).toBe(false);
+            expect(MockSetting.instances.some(s => s._name === t('setting.idle-threshold'))).toBe(false);
+            expect(generalContainer.findByClass('wn-settings-warning')).toBeNull();
+
             const settingsContainer = makeEl('div', 'settings');
             MockSetting.instances = [];
             (tab as unknown as { displayImmersiveModeSettings: (c: unknown) => void }).displayImmersiveModeSettings(settingsContainer);
 
-            // Desktop-only sections must not render on mobile
+            // Floating stats and threshold are rendered at the VERY TOP of mobile immersive settings
+            expect(MockSetting.instances[0]._name).toBe(t('setting.show-floating-stats'));
+            expect(MockSetting.instances[1]._name).toBe(t('setting.idle-threshold'));
+            expect(MockSetting.instances.some(s => s._name === t('setting.idle-threshold'))).toBe(true);
+
+            const idleSlider = MockSetting.instances[1]._slider!;
+            expect(idleSlider).toMatchObject({ min: 30, max: 600, step: 30 });
+            await idleSlider.onChange!(120);
+            expect((h.mockPlugin.settings as unknown as { idleTimeoutThreshold: number }).idleTimeoutThreshold).toBe(120000);
+
+            // Desktop-only layout builder and desktop typewriter topbar toggle must not render on mobile
             expect(MockSetting.instances.some(s => s._name === t('setting.immersive-layout-builder'))).toBe(false);
-            expect(MockSetting.instances.some(s => s._name === t('setting.immersive-dashboard-toggles'))).toBe(false);
+            expect(MockSetting.instances.some(s => s._name === t('setting.show-typewriter-controls'))).toBe(false);
+            expect(MockSetting.instances.some(s => s._name === t('setting.show-manuscript-control'))).toBe(false);
+
+            // Floating stats toggle and dashboard toggles DO render under mobile immersive settings
+            expect(MockSetting.instances.some(s => s._name === t('setting.immersive-dashboard-toggles'))).toBe(true);
+            expect(MockSetting.instances.some(s => s._name === t('setting.show-floating-stats'))).toBe(true);
+            expect(MockSetting.instances.find(s => s._name === t('setting.immersive-mobile-cutout-offset'))?._slider)
+                .toMatchObject({ min: 0, max: 150, step: 2 });
+
+            // Default 4 mobile items are checked; unchecked items are not disabled (no 4-selection limit)
+            const totalToggle = MockSetting.instances.find(s => s._name === t('setting.show-total-time'))!._toggle!;
+            const focusToggle = MockSetting.instances.find(s => s._name === t('setting.show-focus-time'))!._toggle!;
+            expect(focusToggle.value).toBe(true);
+            expect(focusToggle.disabled).toBe(false);
+            expect(totalToggle.value).toBe(false);
+            expect(totalToggle.disabled).toBe(false);
+
+            // Enabling a 5th item succeeds without hitting a limit
+            await totalToggle.onChange!(true);
+            expect((h.mockPlugin.settings.immersive as unknown as { mobileDashboardItems?: string[] }).mobileDashboardItems).toHaveLength(5);
+            expect((h.mockPlugin.settings.immersive as unknown as { mobileDashboardItems?: string[] }).mobileDashboardItems).toContain('totalTime');
+
+            // Turning off one checked item updates selections
+            await focusToggle.onChange!(false);
+            expect((h.mockPlugin.settings.immersive as unknown as { mobileDashboardItems?: string[] }).mobileDashboardItems).toEqual([
+                'totalTime', 'chapterProgress', 'dailyProgress', 'sessionSpeed'
+            ]);
+            // Desktop flags remain preserved
+            expect(h.mockPlugin.settings.immersive.immersiveShowTotalTime).toBe(true);
+            expect(h.mockPlugin.settings.immersive.immersiveShowSlackTime).toBe(true);
 
             // Only enablement remains in settings; component selection and locking live in the panel.
             const auxToggleSetting = MockSetting.instances.find(s => s._name === t('setting.immersive-mobile-aux-enabled'));

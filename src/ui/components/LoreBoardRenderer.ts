@@ -1,12 +1,12 @@
 import { showPluginNotice } from '../../services/PluginNoticeService';
 import { TFile, setIcon, Component, type App } from 'obsidian';
 import { t, getLocale } from '../../i18n';
-import type { GraphEdge, RelationGraphManager } from '../../services/RelationGraphManager';
+import { reconcileGraphData, type GraphEdge, type RelationGraphManager } from '../../services/RelationGraphManager';
 import { ForceLayoutEngine } from '../../services/ForceLayoutEngine';
 import type { CharacterManager, LoreEntry } from '../../services/CharacterManager';
 import { cleanLoreHeading } from '../../services/CharacterManager';
 import type { AccurateCountSettings } from '../../types/settings';
-import { GraphRenderer, type GraphRenderState, type ThemeColors } from './GraphRenderer';
+import { GRAPH_STYLE_DEFAULTS, GraphRenderer, type GraphRenderState, type ThemeColors } from './GraphRenderer';
 import { GraphInteractionController } from './GraphInteractionController';
 import { GraphHoverAdapter } from './GraphHoverAdapter';
 import { LoreCardRenderer, type LoreBodyReadCache } from './LoreCardRenderer';
@@ -65,8 +65,13 @@ export interface LoreBoardOptions {
     reloadBoard?: () => void;
 }
 
+export type LoreBoardGraphRefresh = (
+    matchedLoreHeadings: ReadonlySet<string> | undefined,
+    isStale: () => boolean
+) => Promise<boolean>;
+
 export class LoreBoardRenderer {
-    static async render(options: LoreBoardOptions): Promise<void> {
+    static async render(options: LoreBoardOptions): Promise<LoreBoardGraphRefresh | void> {
         const { app, plugin, container, files, currentBookPath, matchedLoreHeadings, reloadBoard } = options;
         const bookPath = currentBookPath === '/' ? '' : currentBookPath;
         const layoutMode = plugin.settings.loreBoardLayout || 'table';
@@ -83,8 +88,7 @@ export class LoreBoardRenderer {
         }
 
         if (layoutMode === 'graph') {
-            await this.renderGraph(contentArea, app, plugin, bookPath, options.ownerComponent, matchedLoreHeadings);
-            return;
+            return this.renderGraph(contentArea, app, plugin, bookPath, options.ownerComponent, matchedLoreHeadings);
         }
 
         if (layoutMode === 'cards') {
@@ -140,32 +144,15 @@ export class LoreBoardRenderer {
         // 设定文件 tab 排序：拉丁字母开头的文件优先于汉字开头，组内按当前语言字母序（中文按拼音）与数字自然升序排列
         const groups = this.sortLoreFileGroups(Array.from(fileGroups.entries()));
 
-        const boardLayout = container.createDiv('wn-lore-board-layout');
-
-        // --- 文件选项卡栏（“全部” + 各设定文件，带条数徽标） ---
-        // 设计考量：仅在存在 2 个及以上设定文件且未显式隐藏 Tab 栏时渲染文件 Tab 栏
         let activePath = plugin.settings.loreBoardActiveFile || '';
         if (!groups.some(([path]) => path === activePath)) activePath = '';
 
-        const tabEls: { path: string; el: HTMLElement }[] = [];
-
-        if (!options?.hideTabs && groups.length > 1) {
-            const tabBar = boardLayout.createDiv('wn-lore-file-tabs');
-
-            const allTab = tabBar.createDiv(`wn-lore-file-tab ${activePath === '' ? 'is-active' : ''}`);
-            allTab.createSpan({ cls: 'wn-lore-file-tab-label', text: t('lore.tab-all') });
-            allTab.createSpan({ cls: 'wn-lore-file-tab-count', text: String(allEntries.length) });
-            allTab.title = t('lore.tab-all');
-            tabEls.push({ path: '', el: allTab });
-
-            for (const [path, group] of groups) {
-                const tab = tabBar.createDiv(`wn-lore-file-tab ${activePath === path ? 'is-active' : ''}`);
-                tab.createSpan({ cls: 'wn-lore-file-tab-label', text: group.displayName });
-                tab.createSpan({ cls: 'wn-lore-file-tab-count', text: String(group.entries.length) });
-                tab.title = `${group.displayName} (${group.entries.length})`;
-                tabEls.push({ path, el: tab });
-            }
-        }
+        const tabEls = options?.hideTabs ? [] : this.renderFileTabs(
+            container,
+            groups.map(([path, group]) => [path, { displayName: group.displayName, count: group.entries.length }]),
+            allEntries.length
+        );
+        const boardLayout = container.createDiv('wn-lore-board-layout');
 
         // --- 各设定文件分组（DOM 常驻，仅切换显隐，保留卡片编辑与折叠状态） ---
         const panels: { path: string; panel: HTMLElement; header: HTMLElement; grid: HTMLElement; iconSpan: HTMLElement }[] = [];
@@ -275,7 +262,9 @@ export class LoreBoardRenderer {
                 return;
             }
             for (const tab of tabEls) {
-                tab.el.toggleClass('is-active', tab.path === activePath);
+                const selected = tab.path === activePath;
+                tab.el.toggleClass('is-active', selected);
+                tab.el.setAttr('aria-pressed', selected ? 'true' : 'false');
             }
             for (const p of panels) {
                 const visible = activePath === '' || p.path === activePath;
@@ -406,6 +395,24 @@ export class LoreBoardRenderer {
         });
     }
 
+    private static renderFileTabs(
+        container: HTMLElement,
+        groups: [string, { displayName: string; count: number }][],
+        totalCount: number
+    ): { path: string; el: HTMLButtonElement }[] {
+        if (groups.length < 2) return [];
+
+        const tabBar = container.createDiv('wn-lore-file-tabs');
+        const entries: typeof groups = [['', { displayName: t('lore.tab-all'), count: totalCount }], ...groups];
+        return entries.map(([path, group]) => {
+            const el = tabBar.createEl('button', { cls: 'wn-lore-file-tab', type: 'button' });
+            el.createSpan({ cls: 'wn-lore-file-tab-label', text: group.displayName });
+            el.createSpan({ cls: 'wn-lore-file-tab-count', text: String(group.count) });
+            el.title = path ? group.displayName + ' (' + group.count + ')' : group.displayName;
+            return { path, el };
+        });
+    }
+
     private static async renderTable(
         container: HTMLElement,
         app: App,
@@ -486,26 +493,8 @@ export class LoreBoardRenderer {
         let activePath = plugin.settings.loreBoardActiveFile || '';
         if (activePath !== '' && !tabGroupMap.has(activePath)) activePath = '';
 
+        const tabEls = this.renderFileTabs(container, sortedTabGroups, sortedLores.length);
         const boardLayout = container.createDiv('wn-lore-board-layout wn-lore-board-layout-table');
-
-        const tabEls: { path: string; el: HTMLElement }[] = [];
-        if (sortedTabGroups.length > 1) {
-            const tabBar = boardLayout.createDiv('wn-lore-file-tabs');
-
-            const allTab = tabBar.createDiv(`wn-lore-file-tab ${activePath === '' ? 'is-active' : ''}`);
-            allTab.createSpan({ cls: 'wn-lore-file-tab-label', text: t('lore.tab-all') });
-            allTab.createSpan({ cls: 'wn-lore-file-tab-count', text: String(sortedLores.length) });
-            allTab.title = t('lore.tab-all');
-            tabEls.push({ path: '', el: allTab });
-
-            for (const [path, group] of sortedTabGroups) {
-                const tab = tabBar.createDiv(`wn-lore-file-tab ${activePath === path ? 'is-active' : ''}`);
-                tab.createSpan({ cls: 'wn-lore-file-tab-label', text: group.displayName });
-                tab.createSpan({ cls: 'wn-lore-file-tab-count', text: String(group.count) });
-                tab.title = `${group.displayName} (${group.count})`;
-                tabEls.push({ path, el: tab });
-            }
-        }
 
         const groupRows: { groupKey: string; el: HTMLElement }[] = [];
 
@@ -577,7 +566,9 @@ export class LoreBoardRenderer {
                 return;
             }
             for (const tab of tabEls) {
-                tab.el.toggleClass('is-active', tab.path === activePath);
+                const selected = tab.path === activePath;
+                tab.el.toggleClass('is-active', selected);
+                tab.el.setAttr('aria-pressed', selected ? 'true' : 'false');
             }
             for (const row of groupRows) {
                 row.el.hidden = activePath !== '' && row.groupKey !== activePath;
@@ -606,7 +597,7 @@ export class LoreBoardRenderer {
         bookPath: string,
         ownerComponent: Component,
         matchedLoreHeadings?: ReadonlySet<string>
-    ) {
+    ): Promise<LoreBoardGraphRefresh | void> {
         let isDisposed = false;
         ownerComponent.register(() => {
             isDisposed = true;
@@ -746,12 +737,6 @@ export class LoreBoardRenderer {
                 for (let i = 0; i < ticksPerFrame; i++) {
                     const running = engine.tick();
                     if (running) physicsRunning = true;
-                }
-
-                // 将 D3 引擎中的坐标同步回 GraphNode 供 GraphRenderer 绘制
-                for (let i = 0; i < engine.nodes.length && i < data.nodes.length; i++) {
-                    data.nodes[i].x = engine.nodes[i].x;
-                    data.nodes[i].y = engine.nodes[i].y;
                 }
 
                 const hasActiveFocus = Boolean(state.hoveredNode || state.selectedNode);
@@ -998,6 +983,34 @@ export class LoreBoardRenderer {
             ro.disconnect();
         });
 
-        
+        return async (nextMatches, isStale) => {
+            if (isDisposed || isStale()) return false;
+            const nextFiles = plugin.characterManager.getEffectiveLoreFiles(bookPath);
+            if (nextFiles.length === 0 || nextMatches?.size === 0) return false;
+
+            const nextData = await graphManager.buildGraphData(nextFiles[0], { files: nextFiles, enableGlobal: false });
+            if (isDisposed || isStale()) return false;
+            if (nextData.nodes.length === 0) return false;
+
+            const { nodesChanged, edgesChanged, physicsChanged } = reconcileGraphData(data, nextData, lastWidth, lastHeight);
+            const currentMatches = state.filterMatchNodeIds;
+            const filterChanged = currentMatches?.size !== nextMatches?.size ||
+                (nextMatches !== undefined && [...nextMatches].some(id => !currentMatches?.has(id)));
+            if (!nodesChanged && !edgesChanged && !filterChanged) return true;
+
+            if (filterChanged) state.filterMatchNodeIds = nextMatches;
+            if (nodesChanged) {
+                if (state.selectedNode && !data.nodes.includes(state.selectedNode)) state.selectedNode = null;
+                hoverAdapter.cancel();
+                state.hoveredNode = null;
+                controller.updateLayout(data);
+            }
+            if (edgesChanged) {
+                GraphRenderer.buildEdgeOffsets(data, state, currentColors?.curveOffset ?? GRAPH_STYLE_DEFAULTS.CURVE_OFFSET, true);
+            }
+            if (physicsChanged) engine.updateData(data.nodes, data.edges);
+            requestRender();
+            return true;
+        };
     }
 }

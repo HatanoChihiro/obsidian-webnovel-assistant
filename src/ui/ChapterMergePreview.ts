@@ -6,7 +6,7 @@ export class ChapterMergePreview {
 	private pending = new Set<string>();
 	private timer: number | null = null;
 	private disposed = false;
-	private readonly owner: Window & typeof globalThis;
+	private readonly owner: Window & typeof window;
 	private readonly columns: number;
 
 	constructor(root: HTMLElement) {

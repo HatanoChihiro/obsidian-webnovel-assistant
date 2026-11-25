@@ -525,6 +525,49 @@ describe('AddLoreModal Async Guards and Draft Cache', () => {
 	});
 
 	describe('LoreEditModal (Batch C)', () => {
+		it('offers existing types from other lore files and saves the selected type', async () => {
+			const file = Object.assign(new TFile(), { path: 'Book1/Lore/People.md' });
+			const otherFile = Object.assign(new TFile(), { path: 'Book1/Lore/Places.md' });
+			mockApp.vault.cachedRead.mockImplementation(async (target: TFile) => target === otherFile
+				? '## Outpost\n**Type**: Landmark\n\n## Harbor\n**Type**: Landmark\n'
+				: '## Scout\n**Type**: Traveler\n');
+			const plugin: LoreEditPlugin = {
+				app: mockApp as unknown as App,
+				characterManager: {
+					getLoreSnapshot: vi.fn().mockResolvedValue({
+						name: 'Scout', type: 'Traveler', aliases: '', body: '', relations: [], isBorrowed: false
+					}),
+					getAvailableLoreCategories: vi.fn().mockResolvedValue([{ file }, { file: otherFile }]),
+					updateLoreEntry: vi.fn().mockResolvedValue(true),
+				}
+			};
+			const options: string[] = [];
+			let selected = '';
+			let changeType = (_value: string) => {};
+			const dropdownSpy = vi.spyOn(Setting.prototype, 'addDropdown').mockImplementation(function (this: Setting, setup) {
+				const component = {
+					addOption: (value: string) => { options.push(value); return component; },
+					setValue: (value: string) => { selected = value; return component; },
+					onChange: (change: (value: string) => void) => { changeType = change; return component; },
+				} as unknown as DropdownComponent;
+				setup(component);
+				return this;
+			});
+			try {
+				const entry = { file, heading: 'Scout' };
+				const modal = new LoreEditModal(mockApp as unknown as App, plugin, entry, 'Book1');
+				(modal as unknown as { contentEl: MockElement }).contentEl = new MockElement('modal-content');
+				await modal.onOpen();
+				expect(selected).toBe('Traveler');
+				expect(options).toEqual(['__NONE__', 'Traveler', 'Landmark', '__NEW__']);
+				changeType('Landmark');
+				await modal.saveLore();
+				expect(plugin.characterManager.updateLoreEntry).toHaveBeenCalledWith(entry, expect.objectContaining({ type: 'Landmark' }));
+			} finally {
+				dropdownSpy.mockRestore();
+			}
+		});
+
 		it('renders body fields individually and saves edited values without losing other Markdown', async () => {
 			const file = Object.assign(new TFile(), { path: 'Book1/Lore/Scout.md', basename: 'Scout' });
 			const body = 'Opening paragraph.\n\n### Profile\n**Age**： 24\n\n### History\nA first journey.\n';

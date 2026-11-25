@@ -1,5 +1,5 @@
 import { showPluginNotice } from './PluginNoticeService';
-import { TFile, Vault, type TAbstractFile } from 'obsidian';
+import type { TFile, Vault } from 'obsidian';
 import { ChapterSorter } from './ChapterSorter';
 import { getDefaultFileName, getDefaultFileNameCandidates } from '../i18n/data-keys';
 import { PLATFORM_DELAYS } from '../constants';
@@ -89,35 +89,32 @@ export class CacheManager {
 	 * 从持久化存储加载缓存
 	 */
 	async loadCache(): Promise<boolean> {
-		if (!this.plugin) return false;
+		if (this.plugin.isUnloading) return false;
+		const epoch = this.cacheEpoch;
 
 		try {
 			let cacheData: CacheData | undefined;
 			let shouldPersistMigration = false;
 			const adapter = this.plugin.app.vault.adapter;
 
-			// 首选：从独立缓存文件加载
-			if (await adapter.exists(this.cacheFilePath)) {
+			// 首选独立缓存文件，缺失时兼容旧版 data.json。
+			const exists = await adapter.exists(this.cacheFilePath);
+			if (!this.isBuildCurrent(epoch)) return false;
+			if (exists) {
 				const content = await adapter.read(this.cacheFilePath);
+				if (!this.isBuildCurrent(epoch)) return false;
 				const parsed = JSON.parse(content) as Record<string, unknown>;
 				if (parsed && typeof parsed === 'object' && typeof parsed.version === 'number' && typeof parsed.timestamp === 'number' && Array.isArray(parsed.entries)) {
 					cacheData = parsed as unknown as CacheData;
-				} else {
-					return false;
 				}
 			} else {
-				// 兼容：从 data.json 读取旧版缓存进行迁移
-				const data = await this.plugin.loadData();
-				if (data && (data as Record<string, unknown>).cacheData) {
-					cacheData = (data as Record<string, unknown>).cacheData as CacheData;
-					shouldPersistMigration = true;
-				}
+				const data = await this.plugin.loadData() as { cacheData?: CacheData } | null;
+				if (!this.isBuildCurrent(epoch)) return false;
+				cacheData = data?.cacheData;
+				shouldPersistMigration = Boolean(cacheData);
 			}
+			if (!cacheData) return false;
 
-			if (!cacheData) {
-				return false;
-			}
-			
 			// 检查版本
 			if (cacheData.version !== CACHE_VERSION) {
 				console.warn(`[CacheManager] 缓存版本不匹配 (${cacheData.version} != ${CACHE_VERSION})，忽略并重建`);
@@ -160,8 +157,7 @@ export class CacheManager {
 	 * 保存缓存到持久化存储（原子操作）
 	 */
 	async saveCache(): Promise<void> {
-		if (!this.plugin) return;
-		return this.store.save();
+		await this.store.save();
 	}
 
 	/**
@@ -178,6 +174,53 @@ export class CacheManager {
 		return this.store.isDirty();
 	}
 
+	private isBuildCurrent(epoch: number): boolean {
+		return !this.plugin.isUnloading && this.cacheEpoch === epoch;
+	}
+
+	/**
+	 * 统一批量读取文件并更新缓存（支持分片让权、时间戳与卸载安全检查）
+	 */
+	private async processFileReadBatch(
+		filesToProcess: readonly TFile[],
+		vault: Vault,
+		calculateWords: (content: string) => number,
+		epoch: number,
+		isFileInWorkspace?: (file: TFile) => boolean
+	): Promise<number> {
+		let failCount = 0;
+		const CHUNK_SIZE = 50;
+
+		for (let i = 0; i < filesToProcess.length; i++) {
+			if (!this.isBuildCurrent(epoch)) break;
+			const file = filesToProcess[i];
+			try {
+				const snapshot = this.beginFileReadSnapshot(file, vault);
+				if (!snapshot) continue;
+				try {
+					const content = await vault.cachedRead(file);
+					if (!this.isBuildCurrent(epoch)) break;
+					if (!this.isFileReadSnapshotValid(snapshot, vault, isFileInWorkspace)) {
+						continue;
+					}
+					const count = calculateWords(content);
+					this.applyFileCacheUpdate(file, count, vault, true);
+				} finally {
+					this.endFileReadSnapshot(snapshot);
+				}
+			} catch (error) {
+				console.error(`[CacheManager] 读取文件失败: ${file.path}`, error);
+				failCount++;
+			}
+
+			if ((i + 1) % CHUNK_SIZE === 0) {
+				await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+			}
+		}
+
+		return failCount;
+	}
+
 	/**
 	 * 初始化缓存 - 一次性读取所有文件构建完整缓存
 	 * @param vault Obsidian Vault 实例
@@ -189,59 +232,20 @@ export class CacheManager {
 		calculateWords: (content: string) => number,
 		isFileInWorkspace?: (file: TFile) => boolean
 	): Promise<void> {
+		if (this.plugin.isUnloading) return;
+		const epoch = this.cacheEpoch;
 		const startTime = Date.now();
 
 		try {
-			const allFiles: TFile[] = [];
-			Vault.recurseChildren(vault.getRoot(), (file: TAbstractFile) => {
-				if (file instanceof TFile && file.extension === 'md') {
-					allFiles.push(file);
-				}
-			});
-
-			// 如果提供了工作区检查函数，只处理工作区内的文件
-			const filesToProcess = isFileInWorkspace 
-				? allFiles.filter(f => isFileInWorkspace(f))
-				: allFiles;
-			
-			let failCount = 0;
-			const CHUNK_SIZE = 50;
-
-			// 批量读取所有文件并计算字数（分片让权，防止在大型库中阻塞主线程 UI）
-			for (let i = 0; i < filesToProcess.length; i++) {
-				const file = filesToProcess[i];
-				try {
-					const snapshot = this.beginFileReadSnapshot(file, vault);
-					if (!snapshot) continue;
-					try {
-						const content = await vault.cachedRead(file);
-						if (!this.isFileReadSnapshotValid(snapshot, vault, isFileInWorkspace)) {
-							continue;
-						}
-						const count = calculateWords(content);
-
-						// 已在读取前后完成文件身份、路径、mtime/size 与缓存版本校验，安全写入（允许合法回退 mtime 重建）。
-						this.applyFileCacheUpdate(file, count, vault, true);
-					} finally {
-						this.endFileReadSnapshot(snapshot);
-					}
-				} catch (error) {
-					console.error(`[CacheManager] 读取文件失败: ${file.path}`, error);
-					failCount++;
-					// 继续处理其他文件，不中断整个缓存构建
-				}
-
-				// 每处理 CHUNK_SIZE 个文件主动出让事件循环，保持界面响应
-				if ((i + 1) % CHUNK_SIZE === 0) {
-					await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
-				}
-			}
+			const files = this.plugin.getTrackedMarkdownFiles(true).filter(file =>
+				isFileInWorkspace ? isFileInWorkspace(file) : this.isEligibleForTotalWordCount(file));
+			const failCount = await this.processFileReadBatch(files, vault, calculateWords, epoch, isFileInWorkspace);
+			if (!this.isBuildCurrent(epoch)) return;
 
 			if (failCount > 0) {
 				console.warn(`[CacheManager] 警告: ${failCount} 个文件读取失败，缓存可能不完整`);
 			}
 
-			// 保存缓存到持久化存储
 			await this.saveCache();
 			Logger.info(`[CacheManager] 初始缓存构建完成，用时 ${Date.now() - startTime}ms`);
 		} catch (error) {
@@ -249,7 +253,6 @@ export class CacheManager {
 			throw error;
 		}
 	}
-
 
 	/**
 	 * 获取文件夹字数（从缓存）
@@ -341,6 +344,7 @@ export class CacheManager {
 		_vault: Vault,
 		allowBackwardsMtime: boolean
 	): number {
+		if (this.plugin.isUnloading) return 0;
 		if (!this.isEligibleForTotalWordCount(file)) {
 			if (this.cache.has(file.path)) {
 				this.invalidateCache(file.path, _vault);
@@ -537,7 +541,7 @@ export class CacheManager {
 		const filePath = file.path;
 		return this._normalizedWorkspaceFolders.some(normalizedFolder => {
 			if (normalizedFolder === "") return true;
-			return filePath === normalizedFolder + ".md" || filePath.startsWith(normalizedFolder + "/");
+			return filePath === normalizedFolder || filePath === normalizedFolder + ".md" || filePath.startsWith(normalizedFolder + "/");
 		});
 	}
 
@@ -657,59 +661,41 @@ export class CacheManager {
 	}
 
 	async buildFolderCache(): Promise<void> {
-		if (!this.plugin.settings.showExplorerCounts) return;
+		if (!this.plugin.settings.showExplorerCounts || this.plugin.isUnloading) return;
 
 		try {
-			const loaded = this.getCacheStats().size > 0 ? true : await this.loadCache();
-			const workspaceFiles = this.plugin.getTrackedMarkdownFiles()
+			const beforeLoad = this.cacheEpoch;
+			const loaded = this.cache.size > 0 || await this.loadCache();
+			if (this.plugin.isUnloading || (!loaded && beforeLoad !== this.cacheEpoch)) return;
+			const epoch = this.cacheEpoch;
+			const vault = this.plugin.app.vault;
+			const workspaceFiles = this.plugin.getTrackedMarkdownFiles(true)
 				.filter(file => this.isEligibleForTotalWordCount(file));
-			if (!loaded) {
-				const notice = showPluginNotice(t("notice.building-explorer-cache"), 0);
-				await this.buildInitialCache(
-					this.plugin.app.vault,
-					this.plugin.calculateAccurateWords.bind(this.plugin),
-					this.isEligibleForTotalWordCount.bind(this)
-				);
-				notice?.hide();
-			} else {
+
+			let filesToRefresh = workspaceFiles;
+			if (loaded) {
 				const currentPaths = new Set(workspaceFiles.map(file => file.path));
-				for (const [path, entry] of Array.from(this.getEntries())) {
-					if (!entry.isFolder && !currentPaths.has(path)) {
-						this.invalidateCache(path, this.plugin.app.vault);
-					}
+				for (const [path, entry] of this.cache) {
+					if (!entry.isFolder && !currentPaths.has(path)) this.invalidateCache(path, vault);
 				}
-
-				const filesToRefresh = workspaceFiles.filter(file => {
-					const entry = this.cache.get(file.path);
-					return !entry || entry.isFolder === true || entry.lastModified !== file.stat.mtime;
-				});
-
-				for (const file of filesToRefresh) {
-					try {
-						const vault = this.plugin.app.vault;
-						const snapshot = this.beginFileReadSnapshot(file, vault);
-						if (!snapshot) continue;
-						try {
-							const content = await vault.cachedRead(file);
-							if (!this.isFileReadSnapshotValid(snapshot, vault)) {
-								continue;
-							}
-							const count = this.plugin.calculateAccurateWords(content);
-							this.applyFileCacheUpdate(file, count, vault, true);
-						} finally {
-							this.endFileReadSnapshot(snapshot);
-						}
-					} catch (err) {
-						console.warn("[CacheManager] Failed to read file during cache build", err);
-					}
-				}
-				this.rebuildFolderEntries();
-				await this.saveCache();
+				filesToRefresh = workspaceFiles.filter(file => !this.isFileCacheCurrent(file));
 			}
+
+			const notice = loaded ? undefined : showPluginNotice(t("notice.building-explorer-cache"), 0);
+			try {
+				await this.processFileReadBatch(filesToRefresh, vault, content => this.plugin.calculateAccurateWords(content), epoch);
+			} finally {
+				notice?.hide();
+			}
+			if (!this.isBuildCurrent(epoch)) return;
+			if (loaded) this.rebuildFolderEntries();
+			await this.saveCache();
+			if (!this.isBuildCurrent(epoch)) return;
 
 			if (isMobile()) {
 				const timer = window.setTimeout(() => {
 					this.pendingMobileRefreshTimers.delete(timer);
+					if (this.plugin.isUnloading) return;
 					this.plugin.fileExplorerPatcher?.refreshFolderCounts();
 					if (this.plugin.settings.enableHomepage) void this.plugin.homepageManager?.refreshHomepageViews();
 				}, PLATFORM_DELAYS.MOBILE_CACHE_REFRESH_DELAY);
@@ -721,6 +707,7 @@ export class CacheManager {
 
 			showPluginNotice(t("notice.explorer-cache-complete"), 3000);
 		} catch (error) {
+			if (this.plugin.isUnloading) return;
 			console.error("[Plugin] 缓存构建失败:", error);
 			this.plugin.settings.showExplorerCounts = false;
 			await this.plugin.saveSettings();

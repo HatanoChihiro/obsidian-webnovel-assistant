@@ -249,7 +249,7 @@ Some lore content...
 
             await manager.rebuildCache();
 
-            expect(mockPlugin.getTrackedMarkdownFiles).toHaveBeenCalledWith(true);
+            expect(mockPlugin.getTrackedMarkdownFiles).toHaveBeenCalledWith(true, expect.any(Function));
             const keys = manager.getCharactersForBook('Book1');
             expect(keys).toContain('John Doe');
         });
@@ -1195,6 +1195,103 @@ LinLei is a dragon warrior.`;
             // In-order entries must still have 'First' before 'Second'
             const entries = manager.getLoreEntriesInFileOrder('Book1');
             expect(entries.map(e => e.heading)).toEqual(['First', 'Second']);
+        });
+
+        it('should bound read concurrency to 8 and preserve deterministic order during rebuildCache', async () => {
+            const files: TFile[] = [];
+            for (let i = 0; i < 20; i++) {
+                const name = `File${String(i).padStart(2, '0')}`;
+                files.push(Object.assign(Object.create(TFile.prototype), {
+                    path: `Book1/Lore/${name}.md`,
+                    basename: name,
+                    extension: 'md',
+                    parent: { path: 'Book1/Lore' }
+                }));
+            }
+
+            mockApp.metadataCache.getFileCache = vi.fn().mockImplementation((f: TFile) => ({
+                headings: [{ heading: f.basename, level: 2, position: { start: { line: 0 }, end: { line: 0 } } }]
+            }));
+
+            let activeReads = 0;
+            let peakActiveReads = 0;
+            mockApp.vault.cachedRead = vi.fn().mockImplementation(async (f: TFile) => {
+                activeReads++;
+                peakActiveReads = Math.max(peakActiveReads, activeReads);
+                await new Promise(r => setTimeout(r, 5));
+                activeReads--;
+                return `## ${f.basename}`;
+            });
+
+            manager = new CharacterManager(mockApp, mockPlugin);
+            manager.getBookPathForFile = vi.fn().mockReturnValue('Book1');
+            manager.isLorePath = vi.fn().mockReturnValue(true);
+            mockPlugin.getTrackedMarkdownFiles = vi.fn().mockImplementation((_includeLore: boolean, onFolder?: (folder: TFolder) => void) => {
+                if (onFolder) onFolder(Object.assign(Object.create(TFolder.prototype), { path: 'Book1', name: 'Book1' }));
+                return files;
+            });
+            mockPlugin.settings.workspaceFolders = ['Book1'];
+
+            await manager.rebuildCache();
+
+            expect(peakActiveReads).toBeLessThanOrEqual(8);
+            const entries = manager.getLoreEntriesInFileOrder('Book1');
+            expect(entries.length).toBe(20);
+            for (let i = 0; i < 20; i++) {
+                expect(entries[i].heading).toBe(files[i].basename);
+            }
+        });
+
+        it('should preserve recognized works that have no lore in bookToSeriesMap', async () => {
+            manager = new CharacterManager(mockApp, mockPlugin);
+            manager.getBookPathForFile = vi.fn().mockImplementation((file: TFile) => {
+                if (file.path.startsWith('Book1/')) return 'Book1';
+                if (file.path.startsWith('Book2/')) return 'Book2';
+                return null;
+            });
+            manager.isLorePath = vi.fn().mockImplementation((bookPath: string, parentPath: string) => {
+                return bookPath === 'Book1' && parentPath === 'Book1/Lore';
+            });
+
+            // Book1 has lore, Book2 has NO lore but is a recognized novel folder
+            mockPlugin.homepageManager = {
+                getNovelFolders: vi.fn().mockReturnValue([
+                    { folderPath: 'Book1', folderName: 'Book1', metadata: null, wordCount: 100 },
+                    { folderPath: 'Book2', folderName: 'Book2', metadata: null, wordCount: 0 }
+                ])
+            };
+            mockPlugin.settings.workspaceFolders = [];
+
+            const book1File = Object.assign(Object.create(TFile.prototype), {
+                path: 'Book1/Lore/Char.md',
+                basename: 'Char',
+                extension: 'md',
+                parent: { path: 'Book1/Lore' }
+            });
+            mockPlugin.getVaultMarkdownFiles = vi.fn().mockImplementation((onFolder?: (folder: TFolder) => void) => {
+                if (onFolder) {
+                    onFolder(Object.assign(Object.create(TFolder.prototype), { path: 'Book1', name: 'Book1' }));
+                    onFolder(Object.assign(Object.create(TFolder.prototype), { path: 'Book2', name: 'Book2' }));
+                }
+                return [book1File];
+            });
+            mockApp.metadataCache.getFileCache = vi.fn().mockReturnValue({
+                headings: [{ heading: 'Hero', level: 2, position: { start: { line: 0 }, end: { line: 0 } } }]
+            });
+            mockApp.vault.cachedRead = vi.fn().mockResolvedValue('## Hero');
+
+            vi.spyOn(manager, 'getNovelSeries').mockImplementation(async (bp: string) => {
+                return bp === 'Book2' ? 'Sequel Series' : 'Original Series';
+            });
+
+            await manager.rebuildCache();
+
+            expect(mockPlugin.homepageManager.getNovelFolders).toHaveBeenCalledWith([
+                expect.objectContaining({ path: 'Book1' }), expect.objectContaining({ path: 'Book2' })
+            ]);
+            expect(manager['bookToSeriesMap'].get('Book1')).toBe('Original Series');
+            // Book2 has no lore files, but its series MUST be preserved!
+            expect(manager['bookToSeriesMap'].get('Book2')).toBe('Sequel Series');
         });
 
         it('should keep old contributions removed and notify observers once if parseLoreFile fails during rename', async () => {

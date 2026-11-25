@@ -1,6 +1,6 @@
 import { showPluginNotice } from '../../services/PluginNoticeService';
 import { Modal, Platform, setIcon, setTooltip, type App, type Component, type TFile, type WorkspaceLeaf } from 'obsidian';
-import { filterTimelineEntries, parseTimelineChapterList, type TimelineEntry, type TimelineItem } from '../../services/TimelineManager';
+import { filterTimelineEntries, getTimelineNodeDisplayTime, parseTimelineChapterList, type TimelineEntry, type TimelineItem } from '../../services/TimelineManager';
 import { t } from '../../i18n';
 import { setupStickyNoteParagraphEditor, teardownStickyNoteParagraphEditor, getStickyNoteEditorContent, setStickyNoteEditorContent } from './StickyNoteParagraphEditor';
 import { openFileAndFocus, getLeafForFileNavigation } from '../../utils/leaf';
@@ -567,6 +567,7 @@ export function renderTrajectoryMode(options: TrajectoryModeOptions): void {
 
 	interface TrajectoryColumn {
 		time: string;
+		timePending?: boolean;
 		types: Set<string>;
 		nodes: Map<string, TimelineEntry>;
 		items: TrajectoryItemRef[];
@@ -595,26 +596,32 @@ export function renderTrajectoryMode(options: TrajectoryModeOptions): void {
 
 	for (const entry of effectiveEntries) {
 		const nodeType = entry.type || t('trajectory.main-type');
-		let col = columnMap.get(entry.time);
+		const originalIndex = getOriginalIndex(entry);
+		const colKey = entry.timePending
+			? `__pending__:${entry.nodeId || originalIndex}:${columns.length}`
+			: `time:${entry.time}`;
+		let col = columnMap.get(colKey);
 		if (!col) {
 			col = {
-				time: entry.time,
+				time: getTimelineNodeDisplayTime(entry),
+				timePending: entry.timePending ? true : undefined,
 				types: new Set<string>(),
 				nodes: new Map<string, TimelineEntry>(),
 				items: []
 			};
-			columnMap.set(entry.time, col);
+			columnMap.set(colKey, col);
 			columns.push(col);
 		}
 
-		const originalIndex = getOriginalIndex(entry);
-		const items = entry.items?.length
+		const items = entry.items !== undefined
 			? entry.items
-			: [{
-				description: entry.description,
-				chapter: entry.chapter,
-				important: entry.important
-			}];
+			: (entry.description || entry.chapter || entry.important
+				? [{
+					description: entry.description,
+					chapter: entry.chapter,
+					important: entry.important
+				}]
+				: []);
 
 		col.types.add(nodeType);
 		const firstNode = col.nodes.get(nodeType);
@@ -877,7 +884,10 @@ export function renderTrajectoryMode(options: TrajectoryModeOptions): void {
 			cell.setCssProps({ '--wn-trajectory-type-color': themeColor });
 			place(cell, row, colIndex + 2);
 
-			const node = cell.createDiv({ cls: 'wn-trajectory-node', text: col.time });
+			const node = cell.createDiv({
+				cls: col.timePending ? 'wn-trajectory-node is-time-pending' : 'wn-trajectory-node',
+				text: col.time
+			});
 			const entry = col.nodes.get(type);
 			const originalIndex = entry ? getOriginalIndex(entry) : -1;
 			if (entry && originalIndex >= 0 && onOpenEntry) {

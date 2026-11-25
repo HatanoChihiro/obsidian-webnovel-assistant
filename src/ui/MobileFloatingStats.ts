@@ -1,9 +1,19 @@
 import { Logger } from '../utils/Logger';
 import type { App } from 'obsidian';
 import { MarkdownView, setIcon } from 'obsidian';
-import { t } from '../i18n';
-import type { AccurateCountSettings } from '../types/settings';
+import { MOBILE_DASHBOARD_STAT_KEYS } from '../constants';
+import {
+	formatMobileDashboardValues,
+	formatMobileTimerValues,
+	getMobileDashboardItemTone,
+	resolveMobileTaskProgress,
+	sanitizeMobileDashboardItems,
+	type MobileDashboardTaskManagerLike
+} from '../services/MobileDashboardStats';
+import type { AccurateCountSettings, MobileDashboardStatKey } from '../types/settings';
 import type { StatisticsManager } from '../services/StatisticsManager';
+
+const TIMER_KEYS: readonly MobileDashboardStatKey[] = ['totalTime', 'focusTime', 'slackTime', 'sessionSpeed', 'currentTime'];
 
 export interface MobileFloatingStatsState {
 	x: number;
@@ -15,7 +25,10 @@ export interface MobileFloatingStatsState {
 export type MobileFloatingStatsSettings = Pick<
 	AccurateCountSettings,
 	'mobileFloatingStatsState'
->;
+> & Partial<Pick<
+	AccurateCountSettings,
+	'immersive' | 'workspaceFolders' | 'loreFolderName' | 'timeline' | 'foreshadowing' | 'novelInfo'
+>>;
 
 export type MobileFloatingStatsStatisticsManager = Pick<
 	StatisticsManager,
@@ -25,6 +38,9 @@ export type MobileFloatingStatsStatisticsManager = Pick<
 export interface MobileFloatingStatsPlugin {
 	isTracking: boolean;
 	focusMs: number;
+	slackMs?: number;
+	lastTaskFolder?: string;
+	taskManager?: MobileDashboardTaskManagerLike;
 	settings: MobileFloatingStatsSettings;
 	statisticsManager: MobileFloatingStatsStatisticsManager;
 	startTracking(): void;
@@ -33,14 +49,8 @@ export interface MobileFloatingStatsPlugin {
 }
 
 /**
- * 移动端浮动统计窗口
- * 在手机和平板端显示章节字数和进度
- * 
- * 特点：
- * - 轻量级，不占用太多屏幕空间
- * - 可拖动位置
- * - 可折叠/展开
- * - 自动保存位置
+ * 移动端专注时间与数据浮动窗口
+ * 在手机和平板端显示专注计时控制与同步自定义的数据栏项
  */
 export class MobileFloatingStats {
 	private app: App;
@@ -52,25 +62,53 @@ export class MobileFloatingStats {
 	private isDocked: boolean = false;
 	private dockEdge: 'left' | 'right' | null = null;
 	private resizeHandler = () => this.flushPosition();
+	private boundsObserver: ResizeObserver | null = null;
 
 	// 显示元素
-	private wordCountEl: HTMLElement | null = null;
-	private progressEl: HTMLElement | null = null;
-	private timerEl: HTMLElement | null = null;
 	private timerBtnEl: HTMLElement | null = null;
-	private timerTextEl: HTMLElement | null = null;
-	private speedEl: HTMLElement | null = null;
+	private itemsContainerEl: HTMLElement | null = null;
+	private itemEls: Partial<Record<MobileDashboardStatKey, HTMLElement>> = {};
+	private taskSeq = 0;
+	private cachedTaskProgress: { words: number; goal: number } = { words: 0, goal: 0 };
 
 	private ownerDocument: Document | null = null;
 	private ownerWindow: Window | null = null;
 	private pendingInitialRaf: { win: Window; id: number } | null = null;
 	private pendingPositionRaf: { win: Window; id: number } | null = null;
+	private clockIntervalId: number | null = null;
 	private currentTimerIcon: 'play' | 'pause' | null = null;
 
 	constructor(app: App, plugin: MobileFloatingStatsPlugin) {
 		this.app = app;
 		this.plugin = plugin;
 		this.loadPosition();
+	}
+
+	private getSelectedDashboardItems(): MobileDashboardStatKey[] {
+		return sanitizeMobileDashboardItems(this.plugin.settings.immersive?.mobileDashboardItems);
+	}
+
+	private syncClockInterval(selected: readonly MobileDashboardStatKey[]): void {
+		const needsClock = Boolean(this.containerEl) && selected.includes('currentTime') && !this.plugin.isTracking;
+		if (!needsClock) {
+			this.stopClockInterval();
+			return;
+		}
+		if (this.clockIntervalId !== null || typeof this.ownerWindow?.setInterval !== 'function') {
+			return;
+		}
+		this.clockIntervalId = this.ownerWindow.setInterval(() => {
+			this.updateTimerUI();
+		}, 1000);
+	}
+
+	private stopClockInterval(): void {
+		if (this.clockIntervalId !== null) {
+			if (typeof this.ownerWindow?.clearInterval === 'function') {
+				this.ownerWindow.clearInterval(this.clockIntervalId);
+			}
+			this.clockIntervalId = null;
+		}
 	}
 
 	/**
@@ -111,53 +149,28 @@ export class MobileFloatingStats {
 			}
 		});
 
-		// 字数显示
-		this.wordCountEl = this.containerEl.createSpan({
-			text: `0${t('common.word-char')}`, 
-			cls: 'wn-mobile-floating-word-count'
-		});
-
-		// 分隔符
-		this.containerEl.createSpan({
-			text: '|',
-			cls: 'wn-mobile-floating-divider'
-		});
-
-		// 进度显示
-		this.progressEl = this.containerEl.createSpan({
-			text: '0%',
-			cls: 'wn-mobile-floating-progress'
-		});
-
-		// 专注计时容器
-		this.timerEl = this.containerEl.createSpan({
-			cls: 'wn-mobile-floating-timer'
-		});
-
-		// 播放/暂停按键前的分隔符
-		this.timerEl.createSpan({
-			text: '|',
-			cls: 'wn-mobile-floating-divider'
-		});
-		
-		// 仅图标响应点击/触摸事件，防止误触
-		this.timerBtnEl = this.timerEl.createSpan({
+		// 左侧保留 ▶/⏸ 开始/暂停计时按键，仅图标响应点击/触摸事件，防止误触
+		this.timerBtnEl = this.containerEl.createSpan({
 			cls: 'wn-mobile-floating-timer-btn wn-clickable wn-text-muted',
 		});
 		setIcon(this.timerBtnEl, 'play');
 		this.currentTimerIcon = 'play';
 
-		// 时间与文字展示标签（只读，无点击事件）
-		this.timerTextEl = this.timerEl.createSpan({
-			cls: 'wn-mobile-floating-timer-text wn-text-accent'
+		const itemsWrap = this.containerEl.createSpan({
+			cls: 'wn-mobile-floating-items'
 		});
-		this.timerEl.createSpan({
-			text: '|',
-			cls: 'wn-mobile-floating-divider'
-		});
-		this.speedEl = this.timerEl.createSpan({
-			cls: 'wn-mobile-floating-speed'
-		});
+		this.itemsContainerEl = itemsWrap;
+		this.itemEls = {};
+		for (const key of MOBILE_DASHBOARD_STAT_KEYS) {
+			const tone = getMobileDashboardItemTone(key);
+			const toneCls = tone === 'focus' ? ' is-focus' : tone === 'slack' ? ' is-slack' : '';
+			const itemEl = itemsWrap.createSpan({
+				cls: `wn-mobile-floating-item${toneCls} is-hidden`
+			});
+			itemEl.setAttribute('data-stat-key', key);
+			itemEl.hide();
+			this.itemEls[key] = itemEl;
+		}
 
 		const onTimerAction = (e: Event) => {
 			e.stopPropagation();
@@ -176,8 +189,13 @@ export class MobileFloatingStats {
 		// 绑定拖动事件
 		this.bindDragEvents(this.containerEl);
 
-		// 监听窗口尺寸变化
+		// 视口或浮窗尺寸改变时重新约束位置
 		this.ownerWindow.addEventListener('resize', this.resizeHandler);
+		const Observer = (ownerWin as Window & typeof window).ResizeObserver;
+		if (Observer) {
+			this.boundsObserver = new Observer(() => this.checkBounds());
+			this.boundsObserver.observe(container);
+		}
 
 		// 初始更新
 		this.update();
@@ -197,11 +215,15 @@ export class MobileFloatingStats {
 	 * 卸载浮窗
 	 */
 	unload(): void {
+		this.taskSeq++;
+		this.stopClockInterval();
 		this.cancelPendingInitialRaf();
 		this.cancelPendingPositionRaf();
 		if (this.ownerWindow) {
 			this.ownerWindow.removeEventListener('resize', this.resizeHandler);
 		}
+		this.boundsObserver?.disconnect();
+		this.boundsObserver = null;
 		this.removeDragListeners();
 		this.isDragging = false;
 		this.currentTimerIcon = null;
@@ -210,12 +232,9 @@ export class MobileFloatingStats {
 			this.containerEl.remove();
 			this.containerEl = null;
 		}
-		this.wordCountEl = null;
-		this.progressEl = null;
-		this.timerEl = null;
+		this.itemsContainerEl = null;
+		this.itemEls = {};
 		this.timerBtnEl = null;
-		this.timerTextEl = null;
-		this.speedEl = null;
 		this.ownerDocument = null;
 		this.ownerWindow = null;
 	}
@@ -243,79 +262,116 @@ export class MobileFloatingStats {
 		return Boolean(this.ownerDocument?.body?.classList?.contains?.('wn-immersive-mobile-active'));
 	}
 
-	/**
-	 * 更新显示内容
-	 */
-	update(): void {
-		if (!this.containerEl || this.isSuspendedByMobileImmersive()) return;
-		
-		this.updateTimerUI();
-
-		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-		if (!view || !view.file) {
-			if (this.wordCountEl) this.wordCountEl.textContent = `0${t('common.word-char')}`; 
-			if (this.progressEl) this.progressEl.textContent = '0%';
-			return;
-		}
-
-		// 通过核心管线获取完全一致的数据
-		const stats = this.plugin.statisticsManager.getCoreStats();
-		const wordCount = stats.todayWords;
-		const percent = stats.percent;
-
-		// 更新显示
-		if (this.wordCountEl) this.wordCountEl.textContent = wordCount.toLocaleString() + t('common.word-char'); 
-		if (this.progressEl) {
-			this.progressEl.textContent = percent + '%';
-			
-			// 进度显示：未满50%使用主题色，满50%显示橙色，满100%显示绿色
-			if (percent >= 100) {
-				this.progressEl.removeClass('wn-text-orange', 'wn-text-accent');
-				this.progressEl.addClass('wn-text-green');
-			} else if (percent >= 50) {
-				this.progressEl.removeClass('wn-text-green', 'wn-text-accent');
-				this.progressEl.addClass('wn-text-orange');
-			} else {
-				this.progressEl.removeClass('wn-text-green', 'wn-text-orange');
-				this.progressEl.addClass('wn-text-accent');
-			}
-		}
-	}
-	
-	public updateTimerUI(): void {
-		if (!this.timerEl || !this.timerBtnEl || !this.timerTextEl || this.isSuspendedByMobileImmersive()) return;
-		
-		this.timerEl.show();
-		if (this.speedEl) {
-			this.speedEl.textContent = `${this.plugin.statisticsManager.getSessionSpeed()} ${t('common.words-per-hour-unit')}`;
-		}
-		const focusSec = Math.round((this.plugin.focusMs || 0) / 1000);
-		const h = Math.floor(focusSec / 3600).toString().padStart(2, '0');
-		const m = Math.floor((focusSec % 3600) / 60).toString().padStart(2, '0');
-		const s = (focusSec % 60).toString().padStart(2, '0');
-
-		// 图标按键符号使用 muted 默认色（不高亮），仅时间显示采用主题色
+	private syncPlayPauseButton(): void {
+		if (!this.timerBtnEl) return;
 		this.timerBtnEl.removeClass('wn-text-accent');
 		this.timerBtnEl.addClass('wn-text-muted');
-		this.timerTextEl.removeClass('wn-text-muted');
-		this.timerTextEl.addClass('wn-text-accent');
-
 		const icon = this.plugin.isTracking ? 'pause' : 'play';
 		if (this.currentTimerIcon !== icon) {
 			setIcon(this.timerBtnEl, icon);
 			this.currentTimerIcon = icon;
 		}
-		if (this.plugin.isTracking) {
-			this.timerTextEl.textContent = `${h}:${m}:${s}`;
-		} else {
-			if (focusSec > 0) {
-				// 暂停状态：继续显示已暂停的时长
-				this.timerTextEl.textContent = `${h}:${m}:${s}`;
+	}
+
+	private applySelectedItems(
+		selected: readonly MobileDashboardStatKey[],
+		values: Partial<Record<MobileDashboardStatKey, string>>
+	): void {
+		const selectedSet = new Set<MobileDashboardStatKey>(selected);
+		if (this.itemsContainerEl) {
+			if (selected.length > 0) {
+				this.itemsContainerEl.removeClass('is-hidden');
+				this.itemsContainerEl.show();
 			} else {
-				// 初始或重置状态（未开始计时）：显示“专注计时”
-				const rawText = t('setting.mobile-focus-timer-start');
-				const labelText = rawText.replace(/^[▶⏸\s]+/, '');
-				this.timerTextEl.textContent = labelText;
+				this.itemsContainerEl.addClass('is-hidden');
+				this.itemsContainerEl.hide();
+			}
+		}
+		for (const key of MOBILE_DASHBOARD_STAT_KEYS) {
+			const el = this.itemEls[key];
+			if (!el) continue;
+			const visible = selectedSet.has(key);
+			if (visible) {
+				el.removeClass('is-hidden');
+				el.show();
+				if (values[key] !== undefined) {
+					el.textContent = values[key]!;
+				}
+			} else {
+				el.addClass('is-hidden');
+				el.hide();
+			}
+		}
+	}
+
+	/**
+	 * 更新显示内容
+	 */
+	update(): void {
+		if (!this.containerEl || this.isSuspendedByMobileImmersive()) return;
+
+		const selected = this.getSelectedDashboardItems();
+		this.syncClockInterval(selected);
+		if (selected.length === 0) {
+			this.syncPlayPauseButton();
+			this.applySelectedItems(selected, {});
+			return;
+		}
+
+		const hasContentStats = selected.some(key => !TIMER_KEYS.includes(key));
+		if (!hasContentStats) {
+			this.applySelectedItems(selected, {});
+			this.updateTimerUI();
+			return;
+		}
+
+		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+		const file = view?.file ?? null;
+		const stats = file
+			? this.plugin.statisticsManager.getCoreStats()
+			: this.plugin.statisticsManager.getCoreStats(null);
+		const values = formatMobileDashboardValues(stats, this.cachedTaskProgress);
+		this.applySelectedItems(selected, values);
+		this.syncPlayPauseButton();
+
+		if (selected.includes('taskProgress') && this.plugin.taskManager) {
+			const reqSeq = ++this.taskSeq;
+			void resolveMobileTaskProgress({
+				app: this.app,
+				plugin: this.plugin,
+				file
+			}).then(progress => {
+				if (!this.containerEl || reqSeq !== this.taskSeq || this.isSuspendedByMobileImmersive()) return;
+				this.cachedTaskProgress = progress;
+				const taskEl = this.itemEls.taskProgress;
+				if (taskEl && !taskEl.hasClass('is-hidden')) {
+					taskEl.textContent = `${progress.words}/${progress.goal}`;
+				}
+			});
+		}
+	}
+
+	public updateTimerUI(): void {
+		if (!this.containerEl || !this.timerBtnEl || this.isSuspendedByMobileImmersive()) return;
+
+		this.syncPlayPauseButton();
+		const selected = this.getSelectedDashboardItems();
+		this.syncClockInterval(selected);
+		if (selected.length === 0) return;
+
+		const timerValues = formatMobileTimerValues({
+			focusMs: this.plugin.focusMs,
+			slackMs: this.plugin.slackMs,
+			sessionSpeed: this.plugin.statisticsManager.getSessionSpeed()
+		});
+
+		for (const key of ['totalTime', 'focusTime', 'slackTime', 'sessionSpeed', 'currentTime'] as const) {
+			if (!selected.includes(key)) continue;
+			const el = this.itemEls[key];
+			if (el) {
+				el.removeClass('is-hidden');
+				el.show();
+				el.textContent = timerValues[key];
 			}
 		}
 	}
@@ -402,26 +458,30 @@ export class MobileFloatingStats {
 	}
 
 	private checkBounds(): void {
-		if (!this.containerEl || !this.ownerWindow) return;
+		if (!this.containerEl || !this.ownerWindow || this.isSuspendedByMobileImmersive()) return;
 
-		// 考虑到渲染时可能有微小差异，给默认尺寸
-		const elWidth = this.containerEl.offsetWidth || 150;
-		const elHeight = this.containerEl.offsetHeight || 40;
+		const elWidth = this.containerEl.offsetWidth;
+		const elHeight = this.containerEl.offsetHeight;
+		if (elWidth === 0 || elHeight === 0) return;
 
 		const win = this.ownerWindow;
-		const maxX = win.innerWidth - elWidth;
-		const maxY = win.innerHeight - elHeight;
+		const maxX = Math.max(0, win.innerWidth - elWidth);
+		const maxY = Math.max(0, win.innerHeight - elHeight);
 
 		// X 轴约束
-		if (this.position.x > maxX) {
-			this.position.x = Math.max(0, maxX);
+		if (!this.isDragging && this.isDocked && this.dockEdge === 'right') {
+			this.position.x = maxX;
+		} else if (!this.isDragging && this.isDocked && this.dockEdge === 'left') {
+			this.position.x = 0;
+		} else if (this.position.x > maxX) {
+			this.position.x = maxX;
 		} else if (this.position.x < 0) {
 			this.position.x = 0;
 		}
 
 		// Y 轴约束
 		if (this.position.y > maxY) {
-			this.position.y = Math.max(0, maxY);
+			this.position.y = maxY;
 		} else if (this.position.y < 0) {
 			this.position.y = 0;
 		}
@@ -451,8 +511,9 @@ export class MobileFloatingStats {
 
 		const elWidth = this.containerEl.offsetWidth || 150;
 		const win = this.ownerWindow;
-		const maxX = win.innerWidth - elWidth;
-		const dockThreshold = 35; // 距离左右边缘 35px 内自动贴边缩短并变淡
+		const maxX = Math.max(0, win.innerWidth - elWidth);
+		// 浮窗接近满宽时缩小贴边范围，让两侧可分别触发并保留中间位置。
+		const dockThreshold = Math.min(35, maxX / 3);
 
 		if (this.position.x <= dockThreshold) {
 			this.position.x = 0;
@@ -462,7 +523,7 @@ export class MobileFloatingStats {
 			this.containerEl.addClass('is-docked', 'is-docked-left');
 			this.containerEl.removeClass('is-docked-right', 'is-expanded');
 		} else if (this.position.x >= maxX - dockThreshold) {
-			this.position.x = Math.max(0, maxX);
+			this.position.x = maxX;
 			this.isDocked = true;
 			this.dockEdge = 'right';
 			this.containerEl.setCssStyles({ left: `${this.position.x}px` });

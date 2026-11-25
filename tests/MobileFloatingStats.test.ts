@@ -23,6 +23,12 @@ class FakeWindow extends EventTarget {
 		this.rafCallbacks.delete(id);
 	});
 
+	setInterval = vi.fn((handler: TimerHandler, timeout?: number): number => {
+		return 123;
+	});
+
+	clearInterval = vi.fn((id: number): void => {});
+
 	triggerRaf(id: number, time = 0): void {
 		const cb = this.rafCallbacks.get(id);
 		if (cb) {
@@ -59,12 +65,8 @@ class FakeDocument extends EventTarget {
 interface PrivateStatsAccess {
 	isDragging: boolean;
 	containerEl: (MockElement & { setCssStyles: ReturnType<typeof vi.fn> }) | null;
-	wordCountEl: MockElement | null;
-	progressEl: MockElement | null;
-	timerEl: MockElement | null;
+	itemsContainerEl: MockElement | null;
 	timerBtnEl: MockElement | null;
-	timerTextEl: MockElement | null;
-	speedEl: MockElement | null;
 	ownerDocument: Document | null;
 	ownerWindow: Window | null;
 	pendingInitialRaf: { win: Window; id: number } | null;
@@ -191,30 +193,27 @@ describe('MobileFloatingStats lifecycle & icon caching', () => {
 
 		expect(internal.isDragging).toBe(false);
 		expect(internal.containerEl).toBeNull();
-		expect(internal.wordCountEl).toBeNull();
-		expect(internal.progressEl).toBeNull();
-		expect(internal.timerEl).toBeNull();
+		expect(internal.itemsContainerEl).toBeNull();
 		expect(internal.timerBtnEl).toBeNull();
-		expect(internal.timerTextEl).toBeNull();
-		expect(internal.speedEl).toBeNull();
 		expect(internal.ownerDocument).toBeNull();
 		expect(internal.ownerWindow).toBeNull();
 		expect(internal.pendingInitialRaf).toBeNull();
 		expect(internal.currentTimerIcon).toBeNull();
 	});
 
-	it('coalesces drag writes, flushes final bounds before docking, and saves the latest position', () => {
+	it('coalesces drag writes away from a docked edge and saves the latest position', () => {
 		const win = new FakeWindow();
 		const doc = new FakeDocument(win);
 		setGlobals(win, doc);
 		const plugin = createPluginFixture();
+		plugin.settings.mobileFloatingStatsState = { x: 0, y: 100, isDocked: true, dockEdge: 'left' };
 		const stats = new MobileFloatingStats(fakeApp, plugin);
 		stats.load();
 		win.triggerRaf(1);
 		const el = (stats as unknown as PrivateStatsAccess).containerEl!;
 		const writes = el.setCssStyles;
 		writes.mockClear();
-		el.dispatchEvent('mousedown', { clientX: 20, clientY: 100 });
+		el.dispatchEvent('mousedown', { clientX: 0, clientY: 100 });
 		for (let x = 100; x <= 200; x += 10) {
 			doc.dispatchEvent(Object.assign(new Event('mousemove'), { clientX: x, clientY: 200 }));
 		}
@@ -229,6 +228,17 @@ describe('MobileFloatingStats lifecycle & icon caching', () => {
 		const calls = writes.mock.calls.length;
 		win.triggerRaf(3);
 		expect(writes).toHaveBeenCalledTimes(calls);
+		// A wide widget can still dock to the right on a narrow screen.
+		win.innerWidth = 166;
+		win.dispatchEvent(new Event('resize'));
+		el.dispatchEvent('mousedown', { clientX: 16, clientY: 250 });
+		doc.dispatchEvent(Object.assign(new Event('mousemove'), { clientX: 20, clientY: 250 }));
+		doc.dispatchEvent(new Event('mouseup'));
+		expect(plugin.settings.mobileFloatingStatsState).toEqual({ x: 16, y: 250, isDocked: true, dockEdge: 'right' });
+
+		win.innerWidth = 225;
+		win.dispatchEvent(new Event('resize'));
+		expect(writes).toHaveBeenLastCalledWith({ left: '75px', top: '250px' });
 		stats.unload();
 	});
 
@@ -310,30 +320,30 @@ describe('MobileFloatingStats lifecycle & icon caching', () => {
 		const plugin = createPluginFixture();
 		const speed = vi.mocked(plugin.statisticsManager.getSessionSpeed);
 		speed.mockReturnValue(1200);
+		const originalStats = plugin.statisticsManager.getCoreStats(null);
+		vi.spyOn(plugin.statisticsManager, 'getCoreStats').mockReturnValue({ ...originalStats, sessionSpeed: 1200 });
 		const stats = new MobileFloatingStats(fakeApp, plugin);
 		stats.load();
 		const internal = stats as unknown as PrivateStatsAccess;
-		expect(internal.timerEl?.children.at(-1)).toBe(internal.speedEl);
-		expect(internal.speedEl?.textContent).toBe(`1200 ${t('common.words-per-hour-unit')}`);
+		const findItem = (key: string) => internal.itemsContainerEl?.children.find(c => c.getAttribute('data-stat-key') === key);
+		expect(findItem('sessionSpeed')?.textContent).toBe(`1200 ${t('common.words-per-hour-unit')}`);
 		plugin.isTracking = true;
 		speed.mockReturnValue(1300);
 		stats.updateTimerUI();
-		expect(internal.speedEl?.textContent).toBe(`1300 ${t('common.words-per-hour-unit')}`);
+		expect(findItem('sessionSpeed')?.textContent).toBe(`1300 ${t('common.words-per-hour-unit')}`);
 		plugin.isTracking = false;
 		speed.mockReturnValue(0);
 		await setLocale('en');
 		stats.updateTimerUI();
-		expect(internal.speedEl?.textContent).toBe(`0 ${t('common.words-per-hour-unit')}`);
-		const hide = vi.spyOn(internal.timerEl!, 'hide');
+		expect(findItem('sessionSpeed')?.textContent).toBe(`0 ${t('common.words-per-hour-unit')}`);
 		Object.assign(plugin.settings, { enableMobileFocusTimer: false });
 		stats.updateTimerUI();
-		expect(hide).not.toHaveBeenCalled();
-		expect(internal.speedEl?.textContent).toBe(`0 ${t('common.words-per-hour-unit')}`);
+		expect(findItem('sessionSpeed')?.textContent).toBe(`0 ${t('common.words-per-hour-unit')}`);
 		stats.unload();
-		expect(internal.speedEl).toBeNull();
+		expect(internal.itemsContainerEl).toBeNull();
 	});
 
-	it('avoids redundant setIcon calls while preserving text, settings, locale, and recreated DOM', async () => {
+	it('avoids redundant setIcon calls while preserving synced title-free items, tones, locale, and recreated DOM', async () => {
 		const win = new FakeWindow();
 		const doc = new FakeDocument(win);
 		setGlobals(win, doc);
@@ -346,19 +356,52 @@ describe('MobileFloatingStats lifecycle & icon caching', () => {
 				mobileFloatingStatsState: { x: 20, y: 100 }
 			}
 		});
+		Object.assign(plugin, { slackMs: 90000 });
+		Object.assign(plugin.settings, {
+			immersive: {
+				mobileDashboardItems: ['totalTime', 'focusTime', 'slackTime', 'sessionWords', 'sessionSpeed']
+			}
+		});
+		vi.spyOn(plugin.statisticsManager, 'getCoreStats').mockReturnValue({
+			isTracking: false,
+			focusTime: '00:00:00',
+			slackTime: '00:01:30',
+			totalTime: '00:01:30',
+			sessionWords: 800,
+			sessionSpeed: 1200,
+			todayWords: 1500,
+			goal: 3000,
+			percent: 50,
+			dailyWords: 2500,
+			rawDailyWords: 2500,
+			dailyGoal: 5000,
+			dailyPercent: 50,
+			currentFile: 'chapter',
+			currentFolder: 'book'
+		});
 
 		const stats = new MobileFloatingStats(fakeApp, plugin);
 		stats.load();
 
-		// Initial load creates timerBtnEl and sets 'play' icon once
+		// Initial load creates timerBtnEl on the left and sets 'play' icon once
 		expect(setIconSpy).toHaveBeenCalledTimes(1);
 		expect(setIconSpy).toHaveBeenLastCalledWith(expect.anything(), 'play');
 		setIconSpy.mockClear();
 
 		const internal = stats as unknown as PrivateStatsAccess;
 		const initialBtn = internal.timerBtnEl;
-		const timerTextEl = internal.timerTextEl;
-		expect(timerTextEl?.textContent).toBe('专注计时');
+		expect(internal.containerEl?.children[0]).toBe(initialBtn);
+		const items = () => internal.itemsContainerEl?.children.filter(c => !c.hasClass('is-hidden')) ?? [];
+		expect(items().map(c => c.getAttribute('data-stat-key'))).toEqual(['totalTime', 'focusTime', 'slackTime', 'sessionWords', 'sessionSpeed']);
+		expect(items()[0].textContent).toBe('00:01:30');
+		expect(items()[0].hasClass('is-focus')).toBe(false);
+		expect(items()[0].hasClass('is-slack')).toBe(false);
+		expect(items()[1].textContent).toBe('00:00:00');
+		expect(items()[1].hasClass('is-focus')).toBe(true);
+		expect(items()[2].textContent).toBe('00:01:30');
+		expect(items()[2].hasClass('is-slack')).toBe(true);
+		expect(items()[3].textContent).toBe('+800字');
+		expect(items()[4].textContent).toBe('1200 字/时');
 
 		// 100 updates with unchanged tracking state should NOT call setIcon
 		for (let i = 0; i < 100; i++) {
@@ -366,14 +409,15 @@ describe('MobileFloatingStats lifecycle & icon caching', () => {
 		}
 		expect(setIconSpy).not.toHaveBeenCalled();
 
-		// Transition to tracking: true -> sets 'pause' icon once
+		// Transition to tracking: true -> sets 'pause' icon once and updates total + focus time
 		plugin.isTracking = true;
 		plugin.focusMs = 3661000; // 01:01:01
 		stats.updateTimerUI();
 
 		expect(setIconSpy).toHaveBeenCalledTimes(1);
 		expect(setIconSpy).toHaveBeenLastCalledWith(initialBtn, 'pause');
-		expect(timerTextEl?.textContent).toBe('01:01:01');
+		expect(items()[1].textContent).toBe('01:01:01');
+		expect(items()[0].textContent).toBe('01:02:31');
 		setIconSpy.mockClear();
 
 		// 50 updates advancing seconds while tracking -> 0 setIcon calls, text updates
@@ -382,21 +426,17 @@ describe('MobileFloatingStats lifecycle & icon caching', () => {
 			stats.updateTimerUI();
 		}
 		expect(setIconSpy).not.toHaveBeenCalled();
-		expect(timerTextEl?.textContent).toBe('01:01:51');
+		expect(items()[1].textContent).toBe('01:01:51');
 
-		// Transition to tracking: false -> sets 'play' icon once and resets text
+		// Transition to tracking: false -> sets 'play' icon once and formats English sessionWords without title
 		plugin.isTracking = false;
 		plugin.focusMs = 0;
-		stats.updateTimerUI();
+		await setLocale('en');
+		stats.update();
 		expect(setIconSpy).toHaveBeenCalledTimes(1);
 		expect(setIconSpy).toHaveBeenLastCalledWith(initialBtn, 'play');
-		expect(timerTextEl?.textContent).toBe('专注计时');
+		expect(items()[3].textContent).toBe('+800 words');
 		setIconSpy.mockClear();
-		await setLocale('en');
-		stats.updateTimerUI();
-		expect(timerTextEl?.textContent).toBe(t('setting.mobile-focus-timer-start').replace(/^[▶⏸\s]+/, ''));
-		expect(timerTextEl?.textContent).not.toBe('专注计时');
-		expect(setIconSpy).not.toHaveBeenCalled();
 
 		// Unload and reload: new button is created and reinitializes cache
 		stats.unload();
@@ -413,6 +453,53 @@ describe('MobileFloatingStats lifecycle & icon caching', () => {
 			stats.updateTimerUI();
 		}
 		expect(setIconSpy).not.toHaveBeenCalled();
+		stats.unload();
+	});
+
+	it('avoids full stats calculation when only timer keys are selected and suspends clock interval while tracking', () => {
+		const win = new FakeWindow();
+		const doc = new FakeDocument(win);
+		setGlobals(win, doc);
+
+		const plugin = createPluginFixture({
+			isTracking: false,
+			focusMs: 0,
+			settings: {
+				mobileFloatingStatsState: { x: 20, y: 100 }
+			}
+		});
+		Object.assign(plugin.settings, {
+			immersive: {
+				mobileDashboardItems: ['currentTime', 'totalTime'] // only timer keys!
+			}
+		});
+		const getCoreStatsSpy = vi.spyOn(plugin.statisticsManager, 'getCoreStats');
+
+		const setIntervalSpy = vi.spyOn(win, 'setInterval').mockReturnValue(123);
+		const clearIntervalSpy = vi.spyOn(win, 'clearInterval');
+
+		const stats = new MobileFloatingStats(fakeApp, plugin);
+		stats.load();
+
+		// Because only timer keys are selected, getCoreStats should NOT be called!
+		getCoreStatsSpy.mockClear();
+		stats.update();
+		expect(getCoreStatsSpy).not.toHaveBeenCalled();
+
+		// Idle: clock interval should be active because currentTime is selected
+		expect(setIntervalSpy).toHaveBeenCalled();
+
+		// Transition to tracking: clock interval should be stopped to avoid concurrent redundant timer work
+		plugin.isTracking = true;
+		stats.updateTimerUI();
+		expect(clearIntervalSpy).toHaveBeenCalledWith(123);
+
+		// Stop tracking: clock interval should be resumed
+		setIntervalSpy.mockClear();
+		plugin.isTracking = false;
+		stats.updateTimerUI();
+		expect(setIntervalSpy).toHaveBeenCalled();
+
 		stats.unload();
 	});
 });

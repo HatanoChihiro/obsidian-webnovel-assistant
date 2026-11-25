@@ -21,12 +21,22 @@ body.wn-immersive-mode-active.wn-immersive-mobile-active .workspace-leaf.wn-imme
 
 body.wn-immersive-mode-active.wn-immersive-mobile-active .workspace-leaf.wn-immersive-main-editor .view-content {
 	padding-top: 8px;
+	mask-image: none;
 }
 
-/* Match native mobile gutters without padding the hosted manuscript editor twice. */
+body.wn-immersive-mode-active.wn-immersive-mobile-active .workspace > .mod-root {
+	mask-image: none;
+}
+
+body.wn-immersive-mode-active.wn-immersive-mobile-active .mod-root .workspace-leaf.wn-immersive-main-editor:not(.wn-manuscript-leaf) .workspace-leaf-content .view-content .markdown-source-view.mod-cm6 > .cm-editor > .cm-scroller {
+	padding-top: 0;
+}
+
+/* Match native mobile gutters and edge-to-edge bottom scroll clearance without padding the hosted manuscript editor twice. */
 body.wn-immersive-mode-active.wn-immersive-mobile-active .workspace-leaf.wn-immersive-main-editor:not(.wn-manuscript-leaf) .markdown-source-view.mod-cm6 > .cm-editor > .cm-scroller,
 body.wn-immersive-mode-active.wn-immersive-mobile-active .workspace-leaf.wn-immersive-main-editor .wn-manuscript-flow {
 	padding-inline: max(12px, var(--file-margins-x, var(--size-4-6, 24px)));
+	padding-bottom: max(16px, var(--safe-area-inset-bottom, 0px), env(safe-area-inset-bottom, 0px));
 }
 
 @media (orientation: portrait) {
@@ -35,27 +45,43 @@ body.wn-immersive-mode-active.wn-immersive-mobile-active .workspace-leaf.wn-imme
 	}
 }
 
-/* Mobile immersive top bar */
+/* Mobile immersive accent top bar */
 .wn-immersive-mobile-topbar {
 	position: fixed;
 	top: var(--wn-immersive-mobile-viewport-top, 0px);
 	left: var(--wn-immersive-mobile-viewport-left, 0px);
 	width: var(--wn-immersive-mobile-viewport-width, 100%);
-	min-height: calc(44px + max(var(--safe-area-inset-top, 0px), env(safe-area-inset-top, 0px)));
 	padding-top: max(var(--safe-area-inset-top, 0px), env(safe-area-inset-top, 0px));
-	padding-left: max(8px, var(--safe-area-inset-left, 0px), env(safe-area-inset-left, 0px));
-	padding-right: max(8px, var(--safe-area-inset-right, 0px), env(safe-area-inset-right, 0px));
+	padding-left: max(10px, var(--safe-area-inset-left, 0px), env(safe-area-inset-left, 0px));
+	padding-right: max(10px, var(--safe-area-inset-right, 0px), env(safe-area-inset-right, 0px));
 	box-sizing: border-box;
-	background-color: var(--background-secondary);
-	color: var(--text-normal);
-	border-bottom: 1px solid var(--background-modifier-border);
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	box-shadow: 0 2px 8px color-mix(in srgb, var(--interactive-accent) 30%, rgba(0, 0, 0, 0.15));
 	z-index: calc(var(--layer-popover, 30) - 6);
+	display: flex;
+	flex-direction: column;
+	font-family: var(--font-interface);
+	font-size: var(--font-ui-small);
+}
+
+body.wn-immersive-mobile-fullscreen .wn-immersive-mobile-topbar {
+	padding-top: 0;
+}
+
+.wn-immersive-mobile-topbar-header {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	gap: 6px;
-	font-family: var(--font-interface);
-	font-size: var(--font-ui-small);
+	gap: 8px;
+	width: 100%;
+	min-height: 36px;
+	padding-left: var(--wn-immersive-mobile-cutout-left-offset, 0px);
+	box-sizing: border-box;
+}
+
+body.wn-immersive-mobile-fullscreen .wn-immersive-mobile-topbar-header {
+	min-height: max(36px, var(--safe-area-inset-top, 0px), env(safe-area-inset-top, 0px));
 }
 
 .wn-immersive-mobile-safe-area-probe {
@@ -76,47 +102,65 @@ body.wn-immersive-mode-active.wn-immersive-mobile-active .workspace-leaf.wn-imme
 	display: flex;
 	align-items: center;
 	gap: 2px;
-	min-height: 44px;
+	min-height: 36px;
+	margin-left: auto;
 	flex-shrink: 0;
 }
 
 .wn-immersive-mobile-topbar-stats {
 	display: flex;
-	flex-wrap: nowrap;
+	flex-wrap: wrap;
 	align-items: center;
-	gap: 0.6em;
+	gap: 0.5em;
+	width: 100%;
 	min-width: 0;
-	flex: 1 1 0;
-	padding-block: 4px;
+	min-height: 32px;
+	padding-top: 2px;
+	padding-bottom: 6px;
+	box-sizing: border-box;
 	font-variant-numeric: tabular-nums;
-	font-size: var(--wn-immersive-mobile-stats-font-size, var(--font-ui-small));
-	white-space: nowrap;
+}
+
+.wn-immersive-mobile-topbar-stats.is-hidden {
+	display: none;
 }
 
 .wn-immersive-mobile-stat {
 	flex: 0 0 auto;
+	font-size: 0.9em;
 	white-space: nowrap;
+	padding: 2px 8px;
+	border-radius: 10px;
+	background: color-mix(in srgb, var(--text-on-accent) 15%, var(--interactive-accent));
+	color: var(--text-on-accent);
+}
+
+.wn-immersive-mobile-stat.is-focus {
+	background: color-mix(in srgb, var(--text-success, var(--interactive-accent)) 25%, var(--interactive-accent));
+}
+
+.wn-immersive-mobile-stat.is-slack {
+	background: color-mix(in srgb, var(--text-warning, var(--interactive-accent)) 25%, var(--interactive-accent));
+}
+
+.wn-immersive-mobile-stat.is-hidden {
+	display: none;
 }
 
 .wn-immersive-mobile-work-title {
-	flex: 0 0 auto;
+	flex: 0 1 auto;
 	min-width: 0;
-	max-width: min(9em, 30%);
+	max-width: 45%;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+	font-size: calc(var(--font-ui-small) + 2px);
 	font-weight: var(--font-semibold);
+	color: var(--text-on-accent);
 }
 
 .wn-immersive-mobile-work-title.is-hidden {
 	display: none;
-}
-
-.wn-immersive-mobile-timer {
-	display: flex;
-	flex: 0 0 auto;
-	flex-wrap: nowrap;
-	gap: 0.6em;
 }
 
 body.wn-immersive-mobile-active .wn-immersive-mobile-topbar-right .wn-immersive-mobile-topbar-btn {
@@ -133,8 +177,17 @@ body.wn-immersive-mobile-active .wn-immersive-mobile-topbar-right .wn-immersive-
 	border: none;
 	border-radius: var(--radius-s);
 	background-color: transparent;
-	color: var(--text-muted);
+	color: var(--text-on-accent);
 	cursor: pointer;
+}
+
+/* Align the visible icon strokes with the work title without moving the buttons. */
+body.wn-immersive-mobile-active .wn-immersive-mobile-topbar-btn > svg {
+	transform: translateY(-1.5px);
+}
+
+body.wn-immersive-mobile-active .wn-immersive-mobile-topbar-right .wn-immersive-mobile-topbar-btn:hover {
+	background-color: color-mix(in srgb, var(--text-on-accent) 20%, transparent);
 }
 
 .wn-immersive-mobile-topbar-btn:focus-visible,

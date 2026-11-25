@@ -47,6 +47,32 @@
 	box-sizing: border-box;
 }
 
+.wn-timeline-form-input.is-disabled,
+.wn-timeline-form-input:disabled {
+	opacity: 0.55;
+	cursor: not-allowed;
+}
+
+.wn-timeline-time-pending-row {
+	margin-top: 6px;
+	margin-bottom: 4px;
+}
+
+.wn-timeline-time-pending-label {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 0.85em;
+	color: var(--text-muted);
+	cursor: pointer;
+	user-select: none;
+	font-family: var(--font-interface);
+}
+
+.wn-timeline-time-pending-checkbox {
+	margin: 0;
+	cursor: pointer;
+}
 
 .wn-timeline-custom-type-input {
 	margin-top: 4px;

@@ -110,12 +110,18 @@ export const FORESHADOWING_STATUS_MAP: Record<string, string> = {
 const TIMELINE_LABELS = {
 	'zh-CN': {
 		type: '类型',
+		timePending: '时间待定',
+		pendingSection: '待排事件',
 	},
 	'zh-TW': {
 		type: '類型',
+		timePending: '時間待定',
+		pendingSection: '待排事件',
 	},
 	'en': {
 		type: 'Type',
+		timePending: 'Time TBD',
+		pendingSection: 'Pending Events',
 	},
 } as const;
 

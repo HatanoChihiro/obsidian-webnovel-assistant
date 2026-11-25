@@ -104,3 +104,138 @@ export function unlockKeyboardEscape(): void {
 		/* ignored */
 	}
 }
+
+interface CapacitorStatusBarInternal {
+	hide?: () => Promise<void> | void;
+	show?: (options?: { animation?: string }) => Promise<void> | void;
+}
+
+interface CapacitorRuntimeInternal {
+	isNativePlatform?: () => boolean;
+	getPlatform?: () => string;
+	Plugins?: {
+		StatusBar?: CapacitorStatusBarInternal;
+	};
+}
+
+interface MobileNavbarInternal {
+	onScroll?: (...args: unknown[]) => unknown;
+	hideNavigation?: (...args: unknown[]) => unknown;
+	restoreNavigation?: (...args: unknown[]) => unknown;
+}
+
+export interface MobileFullscreenHandle {
+	readonly isNativeFullscreen: boolean;
+	release: () => void;
+}
+
+/**
+ * 复用 Obsidian 移动端阅读全屏的 Capacitor StatusBar 桥接能力：
+ * - 在沉浸会话期间隐藏系统顶部状态栏，并添加 `wn-immersive-mobile-fullscreen`
+ * - 暂时抑制 `app.mobileNavbar` 的滚动/点击自动恢复，防止点击屏幕或切章时将系统状态栏弹回
+ * - 切回前台或收起软键盘后重新确认隐藏，退出沉浸时恢复方法与状态栏
+ */
+export function enterMobileNativeFullscreen(app: unknown, ownerDocument: Document): MobileFullscreenHandle {
+	const ownerWindow = ownerDocument.defaultView;
+	const cap = (ownerWindow as unknown as { Capacitor?: CapacitorRuntimeInternal } | null)?.Capacitor;
+	const isNativePlatform = cap
+		? (typeof cap.getPlatform === 'function'
+			? cap.getPlatform() !== 'web'
+			: (typeof cap.isNativePlatform === 'function' ? cap.isNativePlatform() : Boolean(cap.Plugins?.StatusBar)))
+		: false;
+	const statusBar = isNativePlatform ? cap?.Plugins?.StatusBar : undefined;
+	if (typeof statusBar?.hide !== 'function' || typeof statusBar.show !== 'function') {
+		return { isNativeFullscreen: false, release: () => {} };
+	}
+
+	const mobileNavbar = (app && typeof app === 'object')
+		? (app as { mobileNavbar?: MobileNavbarInternal | null }).mobileNavbar ?? null
+		: null;
+
+	const savedNavbarProps: Array<{
+		key: keyof MobileNavbarInternal;
+		hadOwn: boolean;
+		value: MobileNavbarInternal[keyof MobileNavbarInternal];
+		noop: (...args: unknown[]) => void;
+	}> = [];
+
+	if (mobileNavbar && typeof mobileNavbar === 'object') {
+		for (const key of ['onScroll', 'hideNavigation', 'restoreNavigation'] as const) {
+			const hadOwn = Object.prototype.hasOwnProperty.call(mobileNavbar, key);
+			const value = mobileNavbar[key];
+			const noop = () => { /* suppressed while mobile immersive session is active */ };
+			try {
+				mobileNavbar[key] = noop;
+				savedNavbarProps.push({ key, hadOwn, value, noop });
+			} catch {
+				/* ignored if non-writable */
+			}
+		}
+	}
+
+	// 移除原生滚动隐藏标记，避免全局 mousedown / active-leaf-change 触发 StatusBar.show()
+	ownerDocument.body?.classList?.remove('is-hidden-nav');
+
+	const hideStatusBarSafely = () => {
+		if (!statusBar.hide) return;
+		try {
+			void Promise.resolve(statusBar.hide()).catch(() => {});
+		} catch {
+			/* ignored */
+		}
+	};
+
+	ownerDocument.body?.classList?.add('wn-immersive-mobile-fullscreen');
+	hideStatusBarSafely();
+
+	let released = false;
+	const onVisibilityChange = () => {
+		if (released) return;
+		if (ownerDocument.visibilityState === 'visible') {
+			ownerDocument.body?.classList?.remove('is-hidden-nav');
+			hideStatusBarSafely();
+		}
+	};
+	const onKeyboardHide = () => {
+		if (released) return;
+		ownerDocument.body?.classList?.remove('is-hidden-nav');
+		hideStatusBarSafely();
+	};
+
+	ownerDocument.addEventListener?.('visibilitychange', onVisibilityChange);
+	ownerWindow?.addEventListener?.('keyboardWillHide', onKeyboardHide);
+
+	return {
+		isNativeFullscreen: true,
+		release: () => {
+			if (released) return;
+			released = true;
+			ownerDocument.removeEventListener?.('visibilitychange', onVisibilityChange);
+			ownerWindow?.removeEventListener?.('keyboardWillHide', onKeyboardHide);
+			ownerDocument.body?.classList?.remove('wn-immersive-mobile-fullscreen');
+			ownerDocument.body?.classList?.remove('is-hidden-nav');
+			if (mobileNavbar && typeof mobileNavbar === 'object') {
+				for (const item of savedNavbarProps) {
+					try {
+						if (mobileNavbar[item.key] === item.noop) {
+							if (item.hadOwn) {
+								mobileNavbar[item.key] = item.value;
+							} else {
+								delete mobileNavbar[item.key];
+							}
+						}
+					} catch {
+						/* ignored */
+					}
+				}
+			}
+			if (typeof statusBar.show === 'function') {
+				try {
+					void Promise.resolve(statusBar.show({ animation: 'FADE' })).catch(() => {});
+				} catch {
+					/* ignored */
+				}
+			}
+		}
+	};
+}

@@ -119,10 +119,38 @@ export const VALIDATION_RULES = {
 	MIN_GOAL: 0,
 	/** 沉浸模式番茄钟提醒间隔范围（分钟） */
 	IMMERSIVE_POMODORO_INTERVAL: { min: 20, max: 180 },
+	/** 移动端沉浸模式左侧挖孔避让偏移量范围 (px) */
+	IMMERSIVE_MOBILE_CUTOUT_OFFSET: { min: 0, max: 150 },
 } as const;
 
-import type { AccurateCountSettings, MobileImmersiveAuxPanelState, MobileImmersiveAuxViewType } from './types/settings';
+import type {
+	AccurateCountSettings,
+	MobileDashboardStatKey,
+	MobileImmersiveAuxPanelState,
+	MobileImmersiveAuxViewType
+} from './types/settings';
 import type { ProofreadingSettings } from './types/proofreading';
+
+export const DEFAULT_MOBILE_CUTOUT_OFFSET = 36;
+
+export const MOBILE_DASHBOARD_STAT_KEYS: readonly MobileDashboardStatKey[] = [
+	'totalTime',
+	'focusTime',
+	'slackTime',
+	'chapterProgress',
+	'dailyProgress',
+	'taskProgress',
+	'sessionWords',
+	'sessionSpeed',
+	'currentTime'
+] as const;
+
+export const DEFAULT_MOBILE_DASHBOARD_ITEMS: readonly MobileDashboardStatKey[] = [
+	'focusTime',
+	'chapterProgress',
+	'dailyProgress',
+	'sessionSpeed'
+] as const;
 
 export const MOBILE_IMMERSIVE_AUX_VIEW_TYPES: readonly MobileImmersiveAuxViewType[] = [
 	VIEW_TYPES.IMMERSIVE_CHAPTER_STATUS,
@@ -312,6 +340,7 @@ export const DEFAULT_SETTINGS: AccurateCountSettings = {
 
 		typewriterEnabled: false,
 		immersiveShowTypewriterControls: true,
+		immersiveShowManuscriptControl: true,
 		typewriterCenterOffset: 0,
 		typewriterUnfocusedOpacity: 0.4,
 
@@ -323,6 +352,9 @@ export const DEFAULT_SETTINGS: AccurateCountSettings = {
 		mobileAuxPanel: {
 			...DEFAULT_MOBILE_IMMERSIVE_AUX_PANEL
 		},
+		mobileDashboardItems: [...DEFAULT_MOBILE_DASHBOARD_ITEMS],
+		mobileCutoutAvoidance: false,
+		mobileCutoutLeftOffset: DEFAULT_MOBILE_CUTOUT_OFFSET,
 	},
 
 	// OBS 数据输出默认设置

@@ -2,6 +2,7 @@ import { showPluginNotice } from '../../services/PluginNoticeService';
 import type { App } from 'obsidian';
 import { Setting } from 'obsidian';
 import {
+	createTimelineEntityId,
 	timelineNodeKey,
 	parseTimelineChapterList,
 	serializeTimelineChapterList,
@@ -89,7 +90,33 @@ export class TimelineFormComponent {
 		form.createEl('label', { text: t('modal.time-point'), cls: 'wn-timeline-form-label' });
 		const timeInput = form.createEl('input', { type: 'text', cls: 'wn-timeline-form-input' });
 		timeInput.placeholder = t('modal.time-point-desc');
-		if (initialEntry?.time) timeInput.value = initialEntry.time;
+		if (initialEntry?.time && !initialEntry?.timePending) timeInput.value = initialEntry.time;
+
+		const timePendingRow = form.createDiv({ cls: 'wn-timeline-time-pending-row' });
+		const timePendingLabel = timePendingRow.createEl('label', { cls: 'wn-timeline-time-pending-label' });
+		const timePendingCheckbox = timePendingLabel.createEl('input', {
+			type: 'checkbox',
+			cls: 'wn-timeline-time-pending-checkbox'
+		});
+		timePendingCheckbox.checked = Boolean(initialEntry?.timePending);
+		timePendingLabel.createSpan({ text: t('timeline.time-pending') });
+
+		const syncTimePendingInput = (focusOnEnable = false) => {
+			const isPending = Boolean(timePendingCheckbox.checked);
+			timeInput.disabled = isPending;
+			if (isPending) {
+				timeInput.addClass('is-disabled');
+			} else {
+				timeInput.removeClass('is-disabled');
+			}
+			if (isPending && nodeSelect) {
+				nodeSelect.value = '';
+			} else if (!isPending && focusOnEnable) {
+				timeInput.focus();
+			}
+		};
+		syncTimePendingInput(false);
+		timePendingCheckbox.addEventListener('change', () => syncTimePendingInput(true));
 
 		if (nodeSelect) {
 			timeInput.addEventListener('input', () => {
@@ -293,7 +320,13 @@ export class TimelineFormComponent {
 			loreListContainer.insertBefore(row, addLoreBtn);
 		};
 		applySelectedNode = (selected, updateTime) => {
-			if (updateTime) timeInput.value = selected?.time || '';
+			if (updateTime) {
+				if (selected?.time) {
+					timePendingCheckbox.checked = false;
+					syncTimePendingInput(false);
+				}
+				timeInput.value = selected?.time || '';
+			}
 			typeSelect.value = selected?.type || '';
 			customTypeInput.hidden = true;
 			loreListContainer.empty();
@@ -315,8 +348,9 @@ export class TimelineFormComponent {
 		const saveBtn = btnRow.createEl('button', { text: submitText || t('common.add'), cls: 'wn-timeline-action-btn mod-cta' });
 		saveBtn.onclick = () => {
 			if (isSaving) return;
-			const time = timeInput.value.trim();
-			if (!time) {
+			const isTimePending = Boolean(timePendingCheckbox.checked);
+			const time = isTimePending ? '' : timeInput.value.trim();
+			if (!isTimePending && !time) {
 				showPluginNotice(t('modal.please-fill-time-point'));
 				timeInput.focus();
 				return;
@@ -352,11 +386,11 @@ export class TimelineFormComponent {
 					});
 				}
 			});
-			
+
 			if (items.length === 0) {
 				items.push({ description: '', chapter: '' });
 			}
-			
+
 			const lores: string[] = [];
 			const loreSelects = loreListContainer.querySelectorAll<HTMLSelectElement>('.wn-timeline-lore-select');
 			loreSelects.forEach((select) => {
@@ -370,12 +404,14 @@ export class TimelineFormComponent {
 
 			const entry: TimelineEntry = {
 				time,
+				timePending: isTimePending ? true : undefined,
+				nodeId: isTimePending ? (initialEntry?.nodeId || createTimelineEntityId('nd')) : undefined,
 				type: typeSelect.value === '__custom__' ? customTypeInput.value.trim() : typeSelect.value,
 				description: items.map(it => it.description).filter(Boolean).join('\n'),
 				chapter: aggregateTimelineChapterLists(items.map(it => it.chapter)),
 				rawBlock: initialEntry?.rawBlock || '',
-				origin: items.find(it => it.origin)?.origin || initialEntry?.origin,
-				important: items.some(it => it.important) || initialEntry?.important,
+				origin: items.find(it => it.origin)?.origin || (items.length > 0 ? initialEntry?.origin : undefined),
+				important: items.some(it => it.important) || (items.length > 0 ? initialEntry?.important : undefined),
 				lores: uniqueLores.length > 0 ? uniqueLores : undefined,
 				items: items
 			};
@@ -399,7 +435,11 @@ export class TimelineFormComponent {
 			})();
 		};
 
-		window.setTimeout(() => timeInput.focus(), 50);
+		window.setTimeout(() => {
+			if (!timePendingCheckbox.checked) {
+				timeInput.focus();
+			}
+		}, 50);
 		return form;
 	}
 }

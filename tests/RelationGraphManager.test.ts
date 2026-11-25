@@ -753,6 +753,45 @@ describe('RelationGraphManager', () => {
 			// destroy() stops simulation cleanly
 			engine.destroy();
 		});
+
+		it('updates dormant forces without clearing self-passed nodes or reheating a converged simulation', () => {
+			const nodeA = { id: 'NodeA', x: 120, y: 140, vx: 0, vy: 0, pinned: false };
+			const nodeB = { id: 'NodeB', x: 260, y: 210, vx: 0, vy: 0, pinned: true };
+			const engine = new ForceLayoutEngine([nodeA, nodeB], [], 400, 400);
+
+			// Converge the simulation completely
+			let guard = 0;
+			while (engine.tick() && guard < 1000) {
+				guard++;
+			}
+			expect(engine.isConverged).toBe(true);
+
+			const convergedAX = engine.nodes[0].x;
+			const convergedAY = engine.nodes[0].y;
+			const convergedBX = engine.nodes[1].x;
+			const convergedBY = engine.nodes[1].y;
+			const convergedAlpha = engine.alpha;
+
+			// Passing engine.nodes itself with a new edge must NOT empty engine.nodes or reheat alpha
+			engine.updateData(engine.nodes, [{ source: 'NodeA', target: 'NodeB' }]);
+			expect(engine.nodes).toHaveLength(2);
+			expect(engine.edges).toHaveLength(1);
+			expect(engine.isConverged).toBe(true);
+			expect(engine.alpha).toBe(convergedAlpha);
+			expect(engine.tick()).toBe(false);
+			expect(engine.nodes[0].x).toBe(convergedAX);
+			expect(engine.nodes[0].y).toBe(convergedAY);
+			expect(engine.nodes[1].x).toBe(convergedBX);
+			expect(engine.nodes[1].y).toBe(convergedBY);
+
+			// Passing already-resolved D3 edge objects again must stay valid and keep nodes intact
+			engine.updateData(engine.nodes, engine.edges);
+			expect(engine.nodes).toHaveLength(2);
+			expect(engine.edges).toHaveLength(1);
+			expect(engine.isConverged).toBe(true);
+
+			engine.destroy();
+		});
 	});
 
 	describe('GraphInteractionController', () => {

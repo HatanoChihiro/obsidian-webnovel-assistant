@@ -1,6 +1,6 @@
 import { showPluginNotice } from './src/services/PluginNoticeService';
 import type { App, PluginManifest } from 'obsidian';
-import { Plugin, TFile, TFolder, MarkdownView, MarkdownRenderChild, type MarkdownPostProcessorContext, Vault, type TAbstractFile } from 'obsidian';
+import { Plugin, TFile, TFolder, MarkdownView, type MarkdownPostProcessorContext, Vault, type TAbstractFile } from 'obsidian';
 import type { AccurateCountSettings } from './src/types/settings';
 import type { WebNovelAssistantPlugin, SeriesLoreRenameResult } from './src/types/plugin';
 import { VIEW_TYPES } from './src/constants';
@@ -52,7 +52,7 @@ import { createWordCountGutter, forceWordCountGutterUpdate } from './src/editor/
 import type { WorkerManager } from './src/services/WorkerManager';
 import type { MarkdownPostProcessor } from './src/services/MarkdownPostProcessor';
 import type { FileEventManager } from './src/services/FileEventManager';
-import { HomepageRenderer } from './src/ui/components/HomepageRenderer';
+import { HomepageRenderer, HomepageRenderChild } from './src/ui/components/HomepageRenderer';
 import type { CharacterManager } from './src/services/CharacterManager';
 import { t } from './src/i18n';
 
@@ -172,6 +172,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 
 		this.workerManager.postMessage('start');
 		this.editorTracker.updateWordCount();
+		this.mobileFloatingStats?.updateTimerUI();
 		this.refreshStatusViews();
 		showPluginNotice(t('notice.tracking-started'));
 	}
@@ -184,21 +185,22 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		this.isTracking = false;
 		this.workerManager.postMessage('stop');
 		this.editorTracker.updateWordCount();
+		this.mobileFloatingStats?.updateTimerUI();
 		this.refreshStatusViews();
 		showPluginNotice(t('notice.tracking-stopped'));
 	}
 
 
 	public setupHomepage(): void {
-		// 创作主页动态渲染：6 个 Obsidian 专用代码块处理器
+		const homepageManager = this.homepageManager;
 		const renderer = new HomepageRenderer(this.app, this);
 
 		if (this.settings.enableHomepage) {
 			this.app.workspace.onLayoutReady(async () => {
-
-
+				if (this.isUnloading) return;
 				try {
-					await this.homepageManager.ensureHomepageExists();
+					await homepageManager.ensureHomepageExists();
+					if (this.isUnloading) return;
 
 					// 如果开启了启动时自动打开主页
 					if (this.settings.openHomepageOnStartup) {
@@ -215,6 +217,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 									const leaf = this.app.workspace.getLeaf(true); // 强制在新标签页打开主页
 									if (leaf) {
 										await leaf.openFile(file);
+										if (this.isUnloading) return;
 										this.app.workspace.setActiveLeaf(leaf, { focus: true });
 									}
 								}
@@ -239,32 +242,12 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 		};
 
 		this.registerMarkdownCodeBlockProcessor('webnovel-homepage', async (source, el, ctx) => {
-			if (!isHomepage(ctx)) return;
+			if (this.isUnloading || !isHomepage(ctx)) return;
 
-			const component = new MarkdownRenderChild(el);
-			ctx.addChild(component);
-
-			component.onload = () => {
-				el.classList.add('webnovel-homepage-root');
-				const leafContent = el.closest('.workspace-leaf-content');
-				if (leafContent) leafContent.classList.add('is-webnovel-homepage');
-			};
-
-			component.onunload = () => {
-				const leafContent = el.closest('.workspace-leaf-content');
-				if (leafContent) leafContent.classList.remove('is-webnovel-homepage');
-				const VIEW_OBS_KEY = '__webnovel_homepage_resize_obs__';
-				const viewDom = el.closest('.markdown-source-view') || el.closest('.markdown-preview-view');
-				if (viewDom) {
-					const anyView = viewDom as unknown as Record<string, ResizeObserver | undefined>;
-					if (anyView[VIEW_OBS_KEY]) {
-						anyView[VIEW_OBS_KEY].disconnect();
-						delete anyView[VIEW_OBS_KEY];
-					}
-				}
-			};
-
-			await renderer.renderHomepage(el);
+			const child = new HomepageRenderChild(el, renderer, () => homepageManager.unregisterRenderChild(child));
+			homepageManager.registerRenderChild(child);
+			ctx.addChild(child);
+			await child.render();
 		});
 
 	}
@@ -276,6 +259,7 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 	public async loadFloatingNotes() {
 		// 所有平台都需要先加载便签数据，移动端/平板端由侧面板使用这些数据。
 		const notes = await this.stickyNoteManager.loadNotes();
+		if (this.isUnloading) return;
 
 		// 仅在桌面端创建浮动便签，移动端/平板端不渲染悬浮便签。
 		if (!isDesktop()) return;
@@ -478,12 +462,14 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 	/**
 	 * 高性能递归获取 Vault 中所有 Markdown 文件（替代原生的 app.vault.getMarkdownFiles 以规避审查警告并提速）
 	 */
-	getVaultMarkdownFiles(): TFile[] {
+	getVaultMarkdownFiles(onFolder?: (folder: TFolder) => void): TFile[] {
 		const root = this.app.vault.getRoot();
 		const files: TFile[] = [];
 		Vault.recurseChildren(root, (file: TAbstractFile) => {
 			if (file instanceof TFile && file.extension === 'md') {
 				files.push(file);
+			} else if (file instanceof TFolder && onFolder) {
+				onFolder(file);
 			}
 		});
 		return files;
@@ -492,33 +478,33 @@ export default class AccurateChineseCountPlugin extends Plugin implements WebNov
 	/**
 	 * 获取当前工作区跟踪的所有 Markdown 文件
 	 * @param includeLore 是否包含设定/Lore 文件夹内的文件（默认 false，供字数统计与章节列表使用；为 true 时供 CharacterManager 设定解析使用）
+	 * @param onFolder 可选文件夹遍历回调（供 CharacterManager 启动时一次性收集候选目录）
 	 */
-	getTrackedMarkdownFiles(includeLore: boolean = false): TFile[] {
+	getTrackedMarkdownFiles(includeLore: boolean = false, onFolder?: (folder: TFolder) => void): TFile[] {
 		const workspaceFolders = this.settings.workspaceFolders || [];
 		if (workspaceFolders.length === 0) {
-			const allFiles = this.getVaultMarkdownFiles();
+			const allFiles = this.getVaultMarkdownFiles(onFolder);
 			return includeLore ? allFiles : allFiles.filter(f => this.cacheManager.isEligibleForChapterList(f));
 		}
 
 		const workspaceFiles: TFile[] = [];
 		const seenPaths = new Set<string>();
-		for (const wp of workspaceFolders) {
-			const folder = this.app.vault.getAbstractFileByPath(wp);
-			if (folder instanceof TFolder) {
-				Vault.recurseChildren(folder, (file: TAbstractFile) => {
-					if (file instanceof TFile && file.extension === 'md' && !seenPaths.has(file.path)) {
-						if (includeLore || this.cacheManager.isEligibleForChapterList(file)) {
-							seenPaths.add(file.path);
-							workspaceFiles.push(file);
-						}
-					}
-				});
-			} else if (folder instanceof TFile && folder.extension === 'md' && !seenPaths.has(folder.path)) {
-				if (includeLore || this.cacheManager.isEligibleForChapterList(folder)) {
-					seenPaths.add(folder.path);
-					workspaceFiles.push(folder);
-				}
+		const visit = (entry: TAbstractFile) => {
+			if (seenPaths.has(entry.path)) return;
+			seenPaths.add(entry.path);
+			if (entry instanceof TFolder) {
+				if (!entry.isRoot()) onFolder?.(entry);
+				for (const child of entry.children) visit(child);
+			} else if (entry instanceof TFile && entry.extension === 'md' &&
+				(includeLore || this.cacheManager.isEligibleForChapterList(entry))) {
+				workspaceFiles.push(entry);
 			}
+		};
+		for (const workspacePath of workspaceFolders) {
+			const path = workspacePath.replace(/^\/+|\/+$/g, '');
+			const target = path ? (this.app.vault.getAbstractFileByPath(path) ?? this.app.vault.getAbstractFileByPath(path + ".md"))
+				: this.app.vault.getRoot();
+			if (target) visit(target);
 		}
 		return workspaceFiles;
 	}

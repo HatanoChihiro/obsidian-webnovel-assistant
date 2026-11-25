@@ -2,15 +2,10 @@ import type { App, TFile } from 'obsidian';
 import { cleanLoreHeading, type CharacterManager, type LoreEntry } from './CharacterManager';
 import { CORKBOARD_STATUS_MAP, getCorkboardStatusText } from '../i18n/data-keys';
 
-interface CachedText {
-	mtime: number;
-	text: string;
-}
-
-interface CachedLoreSections {
-	mtime: number;
-	sections: Map<string, string>;
-}
+type CachedSearchFile = { mtime: number; units: number } & (
+	| { kind: 'chapter'; text: string }
+	| { kind: 'lore'; sections: Map<string, string> }
+);
 
 export function normalizeWorkbenchSearchText(value: unknown): string {
 	if (value === null || value === undefined) return '';
@@ -158,62 +153,91 @@ export function extractLoreSections(content: string, fallbackHeading?: string): 
 	return sections;
 }
 
+const MAX_CACHE_UNITS = 2 * 1024 * 1024; // UTF-16 code units
+const MAX_CACHE_ENTRIES = 256;
+const MAX_FILE_UNITS = 512 * 1024;
+
 export class WorkbenchFilterIndex {
-	private readonly chapterContentCache = new Map<string, CachedText>();
-	private readonly loreSectionCache = new Map<string, CachedLoreSections>();
+	private readonly cache = new Map<string, CachedSearchFile>();
+	private retainedUnits = 0;
 	private generation = 0;
+	private invalidationRevision = 0;
 	private readonly pendingReads = new Map<string, object>();
 
 	constructor(private readonly app: App) {}
 
 	public invalidate(path: string): void {
-		this.chapterContentCache.delete(path);
-		this.loreSectionCache.delete(path);
+		this.removeCached('chapter:' + path);
+		this.removeCached('lore:' + path);
 		this.pendingReads.delete(path);
+		this.invalidationRevision++;
 	}
 
 	public clear(): void {
 		this.generation++;
-		this.chapterContentCache.clear();
-		this.loreSectionCache.clear();
+		this.cache.clear();
+		this.retainedUnits = 0;
 		this.pendingReads.clear();
+	}
+
+	private removeCached(key: string): void {
+		const entry = this.cache.get(key);
+		if (!entry) return;
+		this.retainedUnits -= entry.units;
+		this.cache.delete(key);
+	}
+
+	private storeCached(key: string, entry: CachedSearchFile): void {
+		this.removeCached(key);
+		if (entry.units > MAX_FILE_UNITS) return;
+		while (this.cache.size >= MAX_CACHE_ENTRIES || this.retainedUnits + entry.units > MAX_CACHE_UNITS) {
+			const oldest = this.cache.keys().next();
+			if (oldest.done) break;
+			this.removeCached(oldest.value);
+		}
+		this.cache.set(key, entry);
+		this.retainedUnits += entry.units;
 	}
 
 	public async filterChapters(
 		files: readonly TFile[],
 		query: string | readonly string[],
 		getSynopsis: (file: TFile) => unknown,
-		getStatus?: (file: TFile) => unknown
+		getStatus?: (file: TFile) => unknown,
+		isCancelled?: () => boolean
 	): Promise<TFile[]> {
 		const expectedGeneration = this.generation;
 		const tokens = resolveWorkbenchFilterTokens(query);
 		if (tokens.length === 0) return [...files];
 
+		const checkCancel = () => this.generation !== expectedGeneration || Boolean(isCancelled?.());
+		if (checkCancel()) return [];
+
 		const results: TFile[] = [];
 		for (let i = 0; i < files.length; i++) {
-			if (this.generation !== expectedGeneration) return [];
+			if (checkCancel()) return [];
 			const file = files[i];
 			const synopsis = getSynopsis(file);
-			if (this.generation !== expectedGeneration) return [];
+			if (checkCancel()) return [];
 
 			const metadataText = [
 				normalizeWorkbenchSearchText(file.basename),
 				normalizeWorkbenchSearchText(synopsis),
 				getChapterStatusSearchText(getStatus?.(file))
 			].join('\n');
-			if (this.generation !== expectedGeneration) return [];
+			if (checkCancel()) return [];
 
 			if (tokens.every(token => metadataText.includes(token))) {
 				results.push(file);
 			} else {
-				const body = await this.getChapterBody(file, expectedGeneration);
-				if (this.generation !== expectedGeneration) return [];
+				const body = await this.getChapterBody(file, checkCancel);
+				if (checkCancel()) return [];
 				const currentMetadata = [
 					normalizeWorkbenchSearchText(file.basename),
 					normalizeWorkbenchSearchText(getSynopsis(file)),
 					getChapterStatusSearchText(getStatus?.(file))
 				].join('\n');
-				if (this.generation !== expectedGeneration) return [];
+				if (checkCancel()) return [];
 				if (tokens.every(token => currentMetadata.includes(token) || body.includes(token))) {
 					results.push(file);
 				}
@@ -221,7 +245,7 @@ export class WorkbenchFilterIndex {
 
 			if (i > 0 && i % 50 === 0) {
 				await this.yieldToMainThread();
-				if (this.generation !== expectedGeneration) return [];
+				if (checkCancel()) return [];
 			}
 		}
 
@@ -231,16 +255,25 @@ export class WorkbenchFilterIndex {
 	public async filterLoreEntries(
 		entries: readonly LoreEntry[],
 		aliasesByHeading: ReadonlyMap<string, readonly string[]>,
-		query: string | readonly string[]
+		query: string | readonly string[],
+		isCancelled?: () => boolean
 	): Promise<Set<string>> {
 		const expectedGeneration = this.generation;
 		const tokens = resolveWorkbenchFilterTokens(query);
 		const uniqueEntries = this.getUniqueLoreEntries(entries);
 		if (tokens.length === 0) return new Set(uniqueEntries.map(entry => entry.heading));
 
+		const checkCancel = () => this.generation !== expectedGeneration || Boolean(isCancelled?.());
+		if (checkCancel()) return new Set();
+
+		// Consecutive headings can share one file even when it is too large to cache.
+		let lastLore: { file: TFile | null; path: string; mtime: number; revision: number; sections: Map<string, string> | null } = {
+			file: null, path: '', mtime: 0, revision: -1, sections: null
+		};
+
 		const results = new Set<string>();
 		for (let i = 0; i < uniqueEntries.length; i++) {
-			if (this.generation !== expectedGeneration) return new Set();
+			if (checkCancel()) return new Set();
 			const entry = uniqueEntries[i];
 			const aliases = aliasesByHeading.get(entry.heading) ?? [];
 			const metadataText = [
@@ -251,9 +284,16 @@ export class WorkbenchFilterIndex {
 			if (tokens.every(token => metadataText.includes(token))) {
 				results.add(entry.heading);
 			} else {
-				const sections = await this.getLoreSections(entry.file, expectedGeneration);
-				if (this.generation !== expectedGeneration) return new Set();
-				const body = sections.get(entry.heading) ?? '';
+				const file = entry.file;
+				const { path } = file;
+				const { mtime } = file.stat;
+				const revision = this.invalidationRevision;
+				const sections: Map<string, string> | null = lastLore.file === file && lastLore.path === path && lastLore.mtime === mtime && lastLore.revision === revision
+					? lastLore.sections
+					: await this.getLoreSections(file, checkCancel);
+				if (checkCancel()) return new Set();
+				lastLore = { file: sections ? file : null, path, mtime, revision, sections };
+				const body = sections?.get(entry.heading) ?? '';
 				const currentMetadata = [
 					normalizeWorkbenchSearchText(entry.heading),
 					normalizeWorkbenchSearchText((aliasesByHeading.get(entry.heading) ?? []).join('\n'))
@@ -265,7 +305,7 @@ export class WorkbenchFilterIndex {
 
 			if (i > 0 && i % 50 === 0) {
 				await this.yieldToMainThread();
-				if (this.generation !== expectedGeneration) return new Set();
+				if (checkCancel()) return new Set();
 			}
 		}
 
@@ -282,10 +322,11 @@ export class WorkbenchFilterIndex {
 		});
 	}
 
-	private async getChapterBody(file: TFile, expectedGeneration: number): Promise<string> {
+	private async getChapterBody(file: TFile, isCancelled: () => boolean): Promise<string> {
 		const mtime = file.stat.mtime;
-		const cached = this.chapterContentCache.get(file.path);
-		if (cached?.mtime === mtime) return cached.text;
+		const key = 'chapter:' + file.path;
+		const cached = this.cache.get(key);
+		if (cached?.kind === 'chapter' && cached.mtime === mtime) return cached.text;
 
 		const path = file.path;
 		const readToken = {};
@@ -293,12 +334,12 @@ export class WorkbenchFilterIndex {
 
 		try {
 			const content = await this.app.vault.cachedRead(file);
-			if (this.generation !== expectedGeneration) return '';
+			if (isCancelled()) return '';
 			if (this.pendingReads.get(path) !== readToken) return '';
 			if (file.path !== path || file.stat.mtime !== mtime) return '';
 
 			const text = normalizeWorkbenchSearchText(stripMarkdownFrontmatter(content));
-			this.chapterContentCache.set(file.path, { mtime, text });
+			this.storeCached(key, { kind: 'chapter', mtime, text, units: text.length });
 			return text;
 		} catch (error) {
 			console.error(`[WorkbenchFilterIndex] Failed to read chapter: ${file.path}`, error);
@@ -308,10 +349,11 @@ export class WorkbenchFilterIndex {
 		}
 	}
 
-	private async getLoreSections(file: TFile, expectedGeneration: number): Promise<Map<string, string>> {
+	private async getLoreSections(file: TFile, isCancelled: () => boolean): Promise<Map<string, string> | null> {
 		const mtime = file.stat.mtime;
-		const cached = this.loreSectionCache.get(file.path);
-		if (cached?.mtime === mtime) return cached.sections;
+		const key = 'lore:' + file.path;
+		const cached = this.cache.get(key);
+		if (cached?.kind === 'lore' && cached.mtime === mtime) return cached.sections;
 
 		const path = file.path;
 		const readToken = {};
@@ -319,16 +361,17 @@ export class WorkbenchFilterIndex {
 
 		try {
 			const content = await this.app.vault.cachedRead(file);
-			if (this.generation !== expectedGeneration) return new Map();
-			if (this.pendingReads.get(path) !== readToken) return new Map();
-			if (file.path !== path || file.stat.mtime !== mtime) return new Map();
+			if (isCancelled() || this.pendingReads.get(path) !== readToken) return null;
+			if (file.path !== path || file.stat.mtime !== mtime) return null;
 
 			const sections = extractLoreSections(content, file.basename);
-			this.loreSectionCache.set(file.path, { mtime, sections });
+			let units = 0;
+			for (const [heading, section] of sections) units += heading.length + section.length;
+			this.storeCached(key, { kind: 'lore', mtime, sections, units });
 			return sections;
 		} catch (error) {
-			console.error(`[WorkbenchFilterIndex] Failed to read lore: ${file.path}`, error);
-			return new Map();
+			console.error('[WorkbenchFilterIndex] Failed to read lore:', file.path, error);
+			return null;
 		} finally {
 			if (this.pendingReads.get(path) === readToken) this.pendingReads.delete(path);
 		}

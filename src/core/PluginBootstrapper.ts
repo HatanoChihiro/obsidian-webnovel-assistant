@@ -86,6 +86,7 @@ export class PluginBootstrapper {
 			const bootstrapStartTime = performance.now();
 			const tSettingsStart = performance.now();
 			await this.plugin.loadSettings();
+			if (this.plugin.isUnloading) return;
 			const settingsDuration = performance.now() - tSettingsStart;
 
 			ChapterSorter.setCustomRules(this.plugin.settings.chapterNamingRules || []);
@@ -133,6 +134,7 @@ export class PluginBootstrapper {
 			})();
 
 			await Promise.all([historyPromise, cachePromise, notesPromise]);
+			if (this.plugin.isUnloading) return;
 
 			const tSyncSetupStart = performance.now();
 
@@ -201,8 +203,8 @@ export class PluginBootstrapper {
 
 			this.plugin.registerEvent(this.plugin.app.workspace.on('editor-change', (editor, info) => {
 				const imm = this.plugin.immersiveModeManager;
-				const isMobileScoped = Boolean(imm?.isMobileDataIsolationActive?.() ?? imm?.isMobileImmersiveSessionActive?.());
-				if (isMobileScoped && !imm?.isMainEditorOrigin?.(info, editor)) {
+				const isMobileScoped = imm?.isMobileDataIsolationActive() ?? false;
+				if (isMobileScoped && !imm.isMainEditorOrigin(info, editor)) {
 					return;
 				}
 				const origin = { editor, info };
@@ -220,12 +222,14 @@ export class PluginBootstrapper {
 				if (this.plugin.settings.enableHomepage) {
 					void this.plugin.homepageManager?.refreshHomepageViews();
 				}
+				const imm = this.plugin.immersiveModeManager;
+				if (imm?.isMobileDataIsolationActive()) imm.refreshMobileTopBar();
+				else this.plugin.mobileFloatingStats?.update();
 			}));
 			this.plugin.registerEvent(this.plugin.app.workspace.on('active-leaf-change', () => {
 				const imm = this.plugin.immersiveModeManager;
-				const isMobileScoped = Boolean(imm?.isMobileDataIsolationActive?.() ?? imm?.isMobileImmersiveSessionActive?.());
-				const scopedFile = isMobileScoped
-					? (imm?.getDataScopedMainFile?.() ?? imm?.getActiveSessionMainFile?.() ?? null)
+				const scopedFile = imm?.isMobileDataIsolationActive()
+					? imm.getDataScopedMainFile()
 					: this.plugin.app.workspace.getActiveFile();
 				this.plugin.workerManager.handleActiveFileChange(scopedFile);
 				void this.plugin.editorTracker.handleFileChange();
@@ -233,9 +237,9 @@ export class PluginBootstrapper {
 			}));
 			this.plugin.registerEvent(this.plugin.app.workspace.on('file-open', (file) => {
 				const imm = this.plugin.immersiveModeManager;
-				const isMobileScoped = Boolean(imm?.isMobileDataIsolationActive?.() ?? imm?.isMobileImmersiveSessionActive?.());
+				const isMobileScoped = imm?.isMobileDataIsolationActive() ?? false;
 				const scopedFile = isMobileScoped
-					? (imm?.getDataScopedMainFile?.() ?? imm?.getActiveSessionMainFile?.() ?? null)
+					? (imm?.getDataScopedMainFile() ?? null)
 					: file;
 				this.plugin.workerManager.handleActiveFileChange(scopedFile);
 				void this.plugin.editorTracker.handleFileChange();
@@ -247,8 +251,7 @@ export class PluginBootstrapper {
 				}, 100);
 			}));
 
-			void this.plugin.editorTracker.handleFileChange();
-			this.plugin.editorTracker.updateWordCount();
+			void this.plugin.editorTracker.handleFileChange(true);
 
 			this.plugin.registerEditorContextMenu();
 
@@ -399,7 +402,6 @@ export class PluginBootstrapper {
 
 		// 移动端：如果启用了智能章节排序或主页置顶，启用文件浏览器补丁
 		if (this.plugin.settings.enableSmartChapterSort || this.plugin.settings.homepagePinPosition !== 'none') {
-			ChapterSorter.setCustomRules(this.plugin.settings.chapterNamingRules || []);
 			this.plugin.app.workspace.onLayoutReady(() => {
 				if (this.plugin.isUnloading) return;
 				this.plugin.fileExplorerPatcher.enable();
@@ -440,7 +442,6 @@ export class PluginBootstrapper {
 
 		// 平板端：如果启用了智能章节排序或主页置顶，启用文件浏览器补丁
 		if (this.plugin.settings.enableSmartChapterSort || this.plugin.settings.homepagePinPosition !== 'none') {
-			ChapterSorter.setCustomRules(this.plugin.settings.chapterNamingRules || []);
 			this.plugin.app.workspace.onLayoutReady(() => {
 				if (this.plugin.isUnloading) return;
 				this.plugin.fileExplorerPatcher.enable();
@@ -496,9 +497,6 @@ export class PluginBootstrapper {
 
 		// 启用文件浏览器补丁（智能章节排序 或 创作主页置顶）
 		if (this.plugin.settings.enableSmartChapterSort || this.plugin.settings.homepagePinPosition !== 'none') {
-			// 初始化自定义章节命名规则
-			ChapterSorter.setCustomRules(this.plugin.settings.chapterNamingRules || []);
-
 			// 延迟设置，确保文件浏览器已加载
 			this.plugin.app.workspace.onLayoutReady(() => {
 				if (this.plugin.isUnloading) return;
@@ -519,41 +517,6 @@ export class PluginBootstrapper {
 			if (this.plugin.isUnloading) return;
 			this.plugin.mobileFloatingStats?.load();
 		});
-
-		this.plugin.registerEvent(this.plugin.app.workspace.on('editor-change', (editor, info) => {
-			const imm = this.plugin.immersiveModeManager;
-			const isMobileScoped = Boolean(imm?.isMobileDataIsolationActive?.() ?? imm?.isMobileImmersiveSessionActive?.());
-			if (isMobileScoped) {
-				if (imm?.isMobileImmersiveSessionActive?.() && imm.isMainEditorOrigin?.(info, editor)) {
-					this.plugin.adaptiveDebounceManager.debounce('mobile-stats-update', () => {
-						imm.refreshMobileTopBar?.();
-					});
-				}
-				return;
-			}
-			this.plugin.adaptiveDebounceManager.debounce('mobile-stats-update', () => {
-				this.plugin.mobileFloatingStats?.update();
-			});
-		}));
-		this.plugin.registerEvent(this.plugin.app.workspace.on('webnovel-workbench-book-changed', () => {
-			const imm = this.plugin.immersiveModeManager;
-			if (imm?.isMobileDataIsolationActive?.() ?? imm?.isMobileImmersiveSessionActive?.()) return;
-			this.plugin.mobileFloatingStats?.update();
-		}));
-		this.plugin.registerEvent(this.plugin.app.workspace.on('active-leaf-change', () => {
-			const imm = this.plugin.immersiveModeManager;
-			if (imm?.isMobileDataIsolationActive?.() ?? imm?.isMobileImmersiveSessionActive?.()) return;
-			this.plugin.mobileFloatingStats?.update();
-		}));
-
-		// 监听专注计时刷新
-		this.plugin.registerInterval(window.setInterval(() => {
-			const imm = this.plugin.immersiveModeManager;
-			const isMobileScoped = Boolean(imm?.isMobileDataIsolationActive?.() ?? imm?.isMobileImmersiveSessionActive?.());
-			if (this.plugin.isTracking && !isMobileScoped) {
-				this.plugin.mobileFloatingStats?.update();
-			}
-		}, 1000));
 	}
 
 	/**

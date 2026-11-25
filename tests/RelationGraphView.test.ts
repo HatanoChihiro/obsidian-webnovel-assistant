@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MockElement } from './mocks/MockElement';
 import { RelationGraphView, type RelationGraphViewPlugin } from '../src/ui/RelationGraphView';
 import type { GraphData, GraphNode } from '../src/services/RelationGraphManager';
-import type { GraphRenderState, ThemeColors } from '../src/ui/components/GraphRenderer';
+import { GraphRenderer, type GraphRenderState, type ThemeColors } from '../src/ui/components/GraphRenderer';
 import { LoreCardRenderer } from '../src/ui/components/LoreCardRenderer';
 import { LoreHoverPopover } from '../src/ui/LoreHoverPopover';
 
@@ -449,6 +449,180 @@ describe('RelationGraphView lifecycle & input narrowing', () => {
 
 		// Stale data for fileA must not overwrite fileB!
 		expect((view as unknown as { graphData: { nodes: Array<{ id: string }> } }).graphData.nodes[0].id).toBe('Bob');
+	});
+
+	it('keeps node coordinates, identity, viewport, selection, and converged physics stable across edge additions, label edits, and equivalent reloads', async () => {
+		const loreFile = new MockTFile('Cast.md', 'BookA/设定/Cast.md', 'BookA/设定');
+		mockApp.vault.getAbstractFileByPath.mockImplementation((path: string) => (path === loreFile.path ? loreFile : null));
+
+		const makeGraph = (edges: GraphData['edges']): GraphData => ({
+			nodes: [
+				{ id: 'NodeA', heading: 'NodeA', file: loreFile as never, sourcePath: loreFile.path, x: 0, y: 0, vx: 0, vy: 0, pinned: false },
+				{ id: 'NodeB', heading: 'NodeB', file: loreFile as never, sourcePath: loreFile.path, x: 0, y: 0, vx: 0, vy: 0, pinned: false }
+			],
+			edges
+		});
+
+		let currentResult: GraphData = makeGraph([
+			{ source: 'NodeA', target: 'NodeB', label: 'Ally', type: 'explicit' }
+		]);
+		plugin.relationGraphManager.buildGraphData = vi.fn(async () => currentResult);
+
+		const view = new RelationGraphView({ app: mockApp } as never, plugin);
+		await view.onOpen();
+		await view.loadGraphForFile(loreFile.path);
+
+		// Flush initial rAF
+		vi.advanceTimersByTime(20);
+
+		const internal = view as unknown as {
+			graphData: GraphData;
+			renderState: GraphRenderState;
+			engine: { updateData: ReturnType<typeof vi.fn>; reheat: ReturnType<typeof vi.fn>; tick: ReturnType<typeof vi.fn> };
+			softReloadGraph: () => Promise<void>;
+		};
+
+		// Set deterministic converged coordinates, pinned state, viewport pan/zoom, and selection
+		const origNodeA = internal.graphData.nodes[0];
+		const origNodeB = internal.graphData.nodes[1];
+		origNodeA.x = 180;
+		origNodeA.y = 210;
+		origNodeA.pinned = true;
+		origNodeB.x = 340;
+		origNodeB.y = 290;
+		internal.renderState.scale = 1.75;
+		internal.renderState.panX = 42;
+		internal.renderState.panY = -18;
+		internal.renderState.selectedNode = origNodeA;
+		internal.engine.tick.mockReturnValue(false);
+
+		const buildEdgeOffsetsSpy = vi.mocked(GraphRenderer.buildEdgeOffsets);
+		const renderSpy = vi.mocked(GraphRenderer.render);
+		buildEdgeOffsetsSpy.mockClear();
+		renderSpy.mockClear();
+		internal.engine.updateData.mockClear();
+		internal.engine.reheat.mockClear();
+
+		// 1. Equivalent reload: must be a complete no-op (no edge rebuild, no physics update, no reheat, no repaint)
+		currentResult = makeGraph([
+			{ source: 'NodeA', target: 'NodeB', label: 'Ally', type: 'explicit' }
+		]);
+		await internal.softReloadGraph();
+		vi.advanceTimersByTime(20);
+
+		expect(internal.graphData.nodes[0]).toBe(origNodeA);
+		expect(internal.graphData.nodes[1]).toBe(origNodeB);
+		expect(origNodeA.x).toBe(180);
+		expect(origNodeA.y).toBe(210);
+		expect(origNodeB.x).toBe(340);
+		expect(origNodeB.y).toBe(290);
+		expect(internal.engine.reheat).not.toHaveBeenCalled();
+		expect(internal.engine.updateData).not.toHaveBeenCalled();
+		expect(buildEdgeOffsetsSpy).not.toHaveBeenCalled();
+		expect(renderSpy).not.toHaveBeenCalled();
+
+		// 2. Label-only edit: rebuilds edge offsets with force=true and repaints without reheating or physics update
+		currentResult = makeGraph([
+			{ source: 'NodeA', target: 'NodeB', label: 'Mentor', type: 'explicit' }
+		]);
+		await internal.softReloadGraph();
+		vi.advanceTimersByTime(20);
+
+		expect(internal.graphData.nodes[0]).toBe(origNodeA);
+		expect(origNodeA.x).toBe(180);
+		expect(origNodeA.y).toBe(210);
+		expect(origNodeA.pinned).toBe(true);
+		expect(origNodeB.x).toBe(340);
+		expect(origNodeB.y).toBe(290);
+		expect(internal.renderState.scale).toBe(1.75);
+		expect(internal.renderState.panX).toBe(42);
+		expect(internal.renderState.panY).toBe(-18);
+		expect(internal.renderState.selectedNode).toBe(origNodeA);
+		expect(internal.engine.reheat).not.toHaveBeenCalled();
+		expect(internal.engine.updateData).not.toHaveBeenCalled();
+		expect(buildEdgeOffsetsSpy).toHaveBeenCalledWith(internal.graphData, internal.renderState, undefined, true);
+		expect(renderSpy).toHaveBeenCalled();
+
+		// 3. Adding a reverse edge between existing nodes: updates dormant engine without reheat, preserves coordinates
+		buildEdgeOffsetsSpy.mockClear();
+		renderSpy.mockClear();
+		internal.engine.updateData.mockClear();
+		internal.engine.reheat.mockClear();
+		currentResult = makeGraph([
+			{ source: 'NodeA', target: 'NodeB', label: 'Mentor', type: 'explicit' },
+			{ source: 'NodeB', target: 'NodeA', label: 'Rival', type: 'explicit' }
+		]);
+		await internal.softReloadGraph();
+		vi.advanceTimersByTime(20);
+
+		expect(internal.graphData.nodes[0]).toBe(origNodeA);
+		expect(internal.graphData.nodes[1]).toBe(origNodeB);
+		expect(origNodeA.x).toBe(180);
+		expect(origNodeA.y).toBe(210);
+		expect(origNodeB.x).toBe(340);
+		expect(origNodeB.y).toBe(290);
+		expect(internal.engine.updateData).toHaveBeenCalledTimes(1);
+		expect(internal.engine.reheat).not.toHaveBeenCalled();
+		expect(buildEdgeOffsetsSpy).toHaveBeenCalledWith(internal.graphData, internal.renderState, undefined, true);
+		expect(renderSpy).toHaveBeenCalled();
+
+		// 4. Genuine new node receives initial position while retained nodes preserve coordinates, and removed selection clears
+		internal.engine.updateData.mockClear();
+		internal.engine.reheat.mockClear();
+		internal.renderState.selectedNode = origNodeB;
+		currentResult = {
+			nodes: [
+				{ id: 'NodeA', heading: 'NodeA', file: loreFile as never, sourcePath: loreFile.path, x: 0, y: 0, vx: 0, vy: 0, pinned: false },
+				{ id: 'NodeC', heading: 'NodeC', file: loreFile as never, sourcePath: loreFile.path, x: 0, y: 0, vx: 0, vy: 0, pinned: false }
+			],
+			edges: [{ source: 'NodeA', target: 'NodeC', label: 'Friend', type: 'explicit' }]
+		};
+		await internal.softReloadGraph();
+
+		expect(internal.graphData.nodes).toHaveLength(2);
+		expect(internal.graphData.nodes[0]).toBe(origNodeA);
+		expect(origNodeA.x).toBe(180);
+		expect(origNodeA.y).toBe(210);
+		expect(internal.graphData.nodes[1].id).toBe('NodeC');
+		expect(internal.graphData.nodes[1].x !== 0 || internal.graphData.nodes[1].y !== 0).toBe(true);
+		expect(internal.renderState.selectedNode).toBeNull();
+		expect(internal.engine.updateData).toHaveBeenCalledTimes(1);
+		expect(internal.engine.reheat).not.toHaveBeenCalled();
+
+		await view.onClose();
+	});
+
+	it('restores canvas visibility and clears empty message when standalone graph recovers from empty state', async () => {
+		const loreFile = new MockTFile('Cast.md', 'BookA/设定/Cast.md', 'BookA/设定');
+		mockApp.vault.getAbstractFileByPath.mockImplementation((path: string) => (path === loreFile.path ? loreFile : null));
+
+		let currentResult: GraphData = {
+			nodes: [{ id: 'NodeA', heading: 'NodeA', file: loreFile as never, sourcePath: loreFile.path, x: 0, y: 0, vx: 0, vy: 0, pinned: false }],
+			edges: []
+		};
+		plugin.relationGraphManager.buildGraphData = vi.fn(async () => currentResult);
+
+		const view = new RelationGraphView({ app: mockApp } as never, plugin);
+		await view.onOpen();
+		await view.loadGraphForFile(loreFile.path);
+
+		// Transition to empty
+		currentResult = { nodes: [], edges: [] };
+		await view['softReloadGraph']();
+		const canvas = view['canvas'] as unknown as { hidden?: boolean };
+		expect(canvas.hidden).toBe(true);
+		expect(view.contentEl.querySelector('.wna-relation-graph-empty')).not.toBeNull();
+
+		// Recover with restored data
+		currentResult = {
+			nodes: [{ id: 'NodeA', heading: 'NodeA', file: loreFile as never, sourcePath: loreFile.path, x: 0, y: 0, vx: 0, vy: 0, pinned: false }],
+			edges: []
+		};
+		await view['softReloadGraph']();
+		expect(canvas.hidden).toBe(false);
+		expect(view.contentEl.querySelector('.wna-relation-graph-empty')).toBeNull();
+
+		await view.onClose();
 	});
 });
 

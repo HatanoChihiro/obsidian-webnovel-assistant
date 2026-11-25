@@ -10,6 +10,7 @@ export class MockElement {
 	type = '';
 	selectionStart = 0;
 	selectionEnd = 0;
+	style: Record<string, string> = {};
 	private classes = new Set<string>();
 	private attributes = new Map<string, string>();
 	private listeners = new Map<string, Array<(e?: unknown) => void>>();
@@ -66,7 +67,8 @@ export class MockElement {
 	removeClass(...tokens: string[]) { this.classList.remove(...tokens); return this; }
 	toggleClass(token: string, force?: boolean) { return this.classList.toggle(token, force); }
 	hasClass(token: string) { return this.classes.has(token); }
-	setCssProps(props?: Record<string, string>) { return this; }
+	setCssProps(props?: Record<string, string>) { if (props) Object.assign(this.style, props); return this; }
+	setCssStyles(styles?: Record<string, string>) { if (styles) Object.assign(this.style, styles); return this; }
 	hide() { return this; }
 	show() { return this; }
 

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { TimelineManager, TimelineEntry, parseTimelineChapterList, serializeTimelineChapterList, filterTimelineEntries } from '../src/services/TimelineManager';
 import { ChapterSorter } from '../src/services/ChapterSorter';
 import { ChapterReferenceService } from '../src/services/ChapterReferenceService';
+import { ForeshadowingManager } from '../src/services/ForeshadowingManager';
 import { ForeshadowingStatus } from '../src/types/foreshadowing';
 
 vi.mock('obsidian', () => ({
@@ -2513,6 +2514,586 @@ timeline:
             expect(scopedService.getReferencesSync(chapter)).toBeNull();
 
             await scopedService.destroy();
+        });
+
+        it('persists timeline popover importance with marker-only byte-preserving edits across custom headers, pending blocks, multi-type sections, legacy entries, and synthetic time-pending nodes', async () => {
+            const folder = { path: 'Book 1', isRoot: () => false, parent: null };
+            const tlFile = Object.assign(new TFile(), { name: 'Timeline.md', basename: 'Timeline', path: 'Book 1/Timeline.md', extension: 'md', parent: folder, stat: { mtime: 1, size: 100 } });
+            const ch1 = Object.assign(new TFile(), { name: 'Chapter 1.md', basename: 'Chapter 1', path: 'Book 1/Chapter 1.md', extension: 'md', parent: folder, stat: { mtime: 1, size: 100 } });
+            const ch2 = Object.assign(new TFile(), { name: 'Chapter 2.md', basename: 'Chapter 2', path: 'Book 1/Chapter 2.md', extension: 'md', parent: folder, stat: { mtime: 1, size: 100 } });
+
+            const initialTimeline = [
+                '# Custom Timeline Header',
+                '',
+                'Unrelated intro note.',
+                '',
+                '---',
+                '',
+                '## Day 1',
+                '- Other chapter event [[Chapter 2]] <!-- origin: Other quote -->',
+                '',
+                '---',
+                '',
+                '## Day 2',
+                '',
+                '**Author**：KeepAuthor',
+                '**类型**：Main',
+                '',
+                '- Sibling in ch2 [[Chapter 2]] <!-- origin: Sibling quote -->',
+                '- First ch1 event [[Chapter 1]] <!-- origin: Quote Alpha -->',
+                '- Second ch1 event [[Chapter 1]] <!-- origin: Quote Beta -->',
+                '',
+                '**类型**：Sub',
+                '',
+                '- Subtype event [[Chapter 2]] <!-- origin: Sub quote -->',
+                '',
+                '---',
+                '<!-- wn-pending-events:start -->',
+                '## 待排事件',
+                '- Pending idea [[Chapter 2]] <!-- wn-pending-id: pe_keep_1 -->',
+                '<!-- wn-pending-events:end -->',
+                '## Day 3',
+                'Legacy paragraph event [[Chapter 1]] <!-- origin: Legacy quote -->',
+                '**CustomField**：KeepLegacyMeta',
+                '**类型**：Side',
+                '',
+                '---',
+                '',
+                '## 时间待定 <!-- wn-time-pending -->',
+                '- Unanchored event [[Chapter 1]] <!-- origin: Pending time quote -->',
+                '',
+                '---',
+                ''
+            ].join('\n');
+            let timelineContent = initialTimeline;
+
+            mockApp.vault.getAbstractFileByPath.mockImplementation((p: string) => {
+                if (p === tlFile.path) return tlFile;
+                if (p === ch1.path) return ch1;
+                if (p === ch2.path) return ch2;
+                return null;
+            });
+            mockApp.vault.read.mockImplementation(async (f: TFile) => (f === tlFile ? timelineContent : ''));
+            mockApp.vault.cachedRead.mockImplementation(async (f: TFile) => (f === tlFile ? timelineContent : ''));
+            mockApp.vault.process.mockImplementation(async (f: TFile, cb: (c: string) => string) => {
+                if (f === tlFile) {
+                    timelineContent = cb(timelineContent);
+                    tlFile.stat.mtime += 1;
+                    tlFile.stat.size = timelineContent.length;
+                }
+                return timelineContent;
+            });
+            mockPlugin.getTrackedMarkdownFiles.mockReturnValue([ch1, ch2]);
+            mockPlugin.getVaultMarkdownFiles.mockReturnValue([ch1, ch2]);
+            mockPlugin.timelineManager = manager;
+            mockPlugin.settings.timeline = { fileName: 'Timeline', defaultTypes: [], showEditorReferences: true };
+            mockPlugin.settings.foreshadowing = { fileName: 'Foreshadowing', defaultTags: [], showEditorReferences: false };
+
+            const service = new ChapterReferenceService(mockApp, mockPlugin);
+            const refs = await service.prefetchReferences(ch1);
+            expect(refs.map(r => r.quote)).toEqual(['Quote Alpha', 'Quote Beta', 'Legacy quote', 'Pending time quote']);
+
+            // Toggle first matched item (filtered index 0, actual source entry 1 item 1)
+            await service.setReferenceImportance(refs[0], true);
+            expect(timelineContent).toBe(
+                initialTimeline.replace(
+                    '- First ch1 event [[Chapter 1]] <!-- origin: Quote Alpha -->',
+                    '- First ch1 event [[Chapter 1]] <!-- wn-important --> <!-- origin: Quote Alpha -->'
+                )
+            );
+            expect(service.getReferencesSync(ch1)).toBeNull(); // Scoped invalidation cleared chapter cache
+            expect(mockApp.fileManager.processFrontMatter).not.toHaveBeenCalled();
+
+            // Toggle adjacent item from the same snapshot -> preserves Quote Alpha's mark and every unrelated byte
+            await service.setReferenceImportance(refs[1], true);
+            expect(timelineContent).toBe(
+                initialTimeline
+                    .replace(
+                        '- First ch1 event [[Chapter 1]] <!-- origin: Quote Alpha -->',
+                        '- First ch1 event [[Chapter 1]] <!-- wn-important --> <!-- origin: Quote Alpha -->'
+                    )
+                    .replace(
+                        '- Second ch1 event [[Chapter 1]] <!-- origin: Quote Beta -->',
+                        '- Second ch1 event [[Chapter 1]] <!-- wn-important --> <!-- origin: Quote Beta -->'
+                    )
+            );
+
+            // Repeated toggle on Quote Alpha restores exact original line while keeping Quote Beta marked
+            await service.setReferenceImportance(refs[0], false);
+            expect(timelineContent).toBe(
+                initialTimeline.replace(
+                    '- Second ch1 event [[Chapter 1]] <!-- origin: Quote Beta -->',
+                    '- Second ch1 event [[Chapter 1]] <!-- wn-important --> <!-- origin: Quote Beta -->'
+                )
+            );
+
+            // Toggle legacy non-bullet entry located AFTER pending block -> preserves pending block, legacy format and custom metadata
+            await service.setReferenceImportance(refs[2], true);
+            expect(timelineContent).toContain('Legacy paragraph event [[Chapter 1]] <!-- wn-important --> <!-- origin: Legacy quote -->');
+            expect(timelineContent).toContain('**CustomField**：KeepLegacyMeta');
+            expect(timelineContent).toContain('<!-- wn-pending-events:start -->');
+            expect(timelineContent).toContain('# Custom Timeline Header');
+            expect(timelineContent).toContain('**Author**：KeepAuthor');
+
+            // Repeated toggle on time-pending node without explicit wn-node (synthetic nd_auto hash changes after marker edit)
+            await service.setReferenceImportance(refs[3], true);
+            expect(timelineContent).toContain('- Unanchored event [[Chapter 1]] <!-- wn-important --> <!-- origin: Pending time quote -->');
+            await service.setReferenceImportance(refs[3], false);
+            expect(timelineContent).toContain('- Unanchored event [[Chapter 1]] <!-- origin: Pending time quote -->');
+
+            // Unmarking remaining items restores exact original file bytes
+            await service.setReferenceImportance(refs[1], false);
+            await service.setReferenceImportance(refs[2], false);
+            expect(timelineContent).toBe(initialTimeline);
+
+            await service.setReferenceImportance(refs[1], true);
+            await service.setReferenceImportance(refs[2], true);
+            const reloaded = await service.prefetchReferences(ch1);
+            expect(reloaded.map(r => r.important)).toEqual([false, true, true, false]);
+            await service.destroy();
+        });
+
+        it('fails closed on stale moved, deleted, or ambiguous duplicate timeline records without marking another item', async () => {
+            const folder = { path: 'Book 1', isRoot: () => false, parent: null };
+            const tlFile = Object.assign(new TFile(), { name: 'Timeline.md', basename: 'Timeline', path: 'Book 1/Timeline.md', extension: 'md', parent: folder, stat: { mtime: 1, size: 100 } });
+            const ch1 = Object.assign(new TFile(), { name: 'Chapter 1.md', basename: 'Chapter 1', path: 'Book 1/Chapter 1.md', extension: 'md', parent: folder, stat: { mtime: 1, size: 100 } });
+
+            let timelineContent = [
+                '## Day 1',
+                '- Target item [[Chapter 1]] <!-- origin: Quote One -->',
+                '- Innocent neighbor [[Chapter 1]] <!-- origin: Quote Two -->',
+                '',
+                '---',
+                ''
+            ].join('\n');
+
+            mockApp.vault.getAbstractFileByPath.mockImplementation((p: string) => {
+                if (p === tlFile.path) return tlFile;
+                if (p === ch1.path) return ch1;
+                return null;
+            });
+            mockApp.vault.read.mockImplementation(async (f: TFile) => (f === tlFile ? timelineContent : ''));
+            mockApp.vault.cachedRead.mockImplementation(async (f: TFile) => (f === tlFile ? timelineContent : ''));
+            mockApp.vault.process.mockImplementation(async (f: TFile, cb: (c: string) => string) => {
+                if (f === tlFile) timelineContent = cb(timelineContent);
+                return timelineContent;
+            });
+            mockPlugin.getTrackedMarkdownFiles.mockReturnValue([ch1]);
+            mockPlugin.getVaultMarkdownFiles.mockReturnValue([ch1]);
+            mockPlugin.timelineManager = manager;
+            mockPlugin.settings.timeline = { fileName: 'Timeline', defaultTypes: [], showEditorReferences: true };
+            mockPlugin.settings.foreshadowing = { fileName: 'Foreshadowing', defaultTags: [], showEditorReferences: false };
+
+            const service = new ChapterReferenceService(mockApp, mockPlugin);
+            const [firstRef] = await service.prefetchReferences(ch1);
+
+            // External deletion of Target item shifts Innocent neighbor into item index 0
+            timelineContent = [
+                '## Day 1',
+                '- Innocent neighbor [[Chapter 1]] <!-- origin: Quote Two -->',
+                '',
+                '---',
+                ''
+            ].join('\n');
+            await expect(service.setReferenceImportance(firstRef, true)).rejects.toThrow();
+            expect(manager.parseEntries(timelineContent, 'Book 1')[0].items?.[0].important).toBe(false);
+
+            // Ambiguous duplicate nodes fail closed even when collected from a file that already contained duplicates
+            timelineContent = [
+                '## Day 1',
+                '- Target item [[Chapter 1]] <!-- origin: Quote One -->',
+                '- Innocent neighbor [[Chapter 1]] <!-- origin: Quote Two -->',
+                '',
+                '---',
+                '',
+                '## Day 1',
+                '- Target item [[Chapter 1]] <!-- origin: Quote One -->',
+                '- Innocent neighbor [[Chapter 1]] <!-- origin: Quote Two -->',
+                '',
+                '---',
+                ''
+            ].join('\n');
+            await expect(service.setReferenceImportance(firstRef, true)).rejects.toThrow();
+            service.clearCache();
+            const duplicateRefs = await service.prefetchReferences(ch1);
+            await expect(service.setReferenceImportance(duplicateRefs[0], true)).rejects.toThrow();
+            const entriesAfterAmbiguous = manager.parseEntries(timelineContent, 'Book 1');
+            expect(entriesAfterAmbiguous[0].items?.[0].important).toBe(false);
+            expect(entriesAfterAmbiguous[1].items?.[0].important).toBe(false);
+
+            await service.destroy();
+        });
+
+        it('persists foreshadowing popover importance by exact record identity across duplicate descriptions, legacy format, and creation/recovery pairs', async () => {
+            const folder = { path: 'Book 1', isRoot: () => false, parent: null };
+            const fsFile = Object.assign(new TFile(), { name: 'Foreshadowing.md', basename: 'Foreshadowing', path: 'Book 1/Foreshadowing.md', extension: 'md', parent: folder, stat: { mtime: 1, size: 100 } });
+            const ch1 = Object.assign(new TFile(), { name: 'Chapter 1.md', basename: 'Chapter 1', path: 'Book 1/Chapter 1.md', extension: 'md', parent: folder, stat: { mtime: 1, size: 100 } });
+            const ch2 = Object.assign(new TFile(), { name: 'Chapter 2.md', basename: 'Chapter 2', path: 'Book 1/Chapter 2.md', extension: 'md', parent: folder, stat: { mtime: 1, size: 100 } });
+
+            let fsContent = [
+                '## Shared Clue',
+                '> [[Chapter 2]] - 2026-01-01 10:00',
+                '> First duplicate quote',
+                '',
+                '**状态**：未回收',
+                '',
+                '---',
+                '',
+                '## Shared Clue',
+                '> [[Chapter 1]] - 2026-01-02 10:00',
+                '> Second duplicate quote',
+                '',
+                '**状态**：未回收',
+                '',
+                '---',
+                '',
+                '## [[Chapter 1]] - 2026-01-03 10:00',
+                '> Legacy planted quote',
+                '',
+                '**说明**：Legacy Clue',
+                '**自定义字段**：PreserveMe',
+                '**状态**：阶段回收中',
+                '',
+                '**回收记录**：',
+                '- [阶段] [[Chapter 1]] - 2026-01-04 10:00：Stage note',
+                '  > Legacy recovered quote',
+                '',
+                '---',
+                ''
+            ].join('\n');
+
+            mockApp.vault.getAbstractFileByPath.mockImplementation((p: string) => {
+                if (p === fsFile.path) return fsFile;
+                if (p === ch1.path) return ch1;
+                if (p === ch2.path) return ch2;
+                return null;
+            });
+            mockApp.vault.read.mockImplementation(async (f: TFile) => (f === fsFile ? fsContent : ''));
+            mockApp.vault.cachedRead.mockImplementation(async (f: TFile) => (f === fsFile ? fsContent : ''));
+            mockApp.vault.process.mockImplementation(async (f: TFile, cb: (c: string) => string) => {
+                if (f === fsFile) {
+                    fsContent = cb(fsContent);
+                    fsFile.stat.mtime += 1;
+                    fsFile.stat.size = fsContent.length;
+                }
+                return fsContent;
+            });
+            mockPlugin.getTrackedMarkdownFiles.mockReturnValue([ch1, ch2]);
+            mockPlugin.getVaultMarkdownFiles.mockReturnValue([ch1, ch2]);
+            mockPlugin.foreshadowingManager = new ForeshadowingManager(mockApp, mockPlugin);
+            mockPlugin.settings.timeline = { fileName: 'Timeline', defaultTypes: [], showEditorReferences: false };
+            mockPlugin.settings.foreshadowing = { fileName: 'Foreshadowing', defaultTags: [], showEditorReferences: true };
+
+            const service = new ChapterReferenceService(mockApp, mockPlugin);
+            const refs = await service.prefetchReferences(ch1);
+            expect(refs.map(r => r.quote)).toEqual(['Second duplicate quote', 'Legacy planted quote', 'Legacy recovered quote']);
+
+            // Toggle second duplicate description -> must mark entry 1, NOT entry 0
+            await service.setReferenceImportance(refs[0], true);
+            let entries = mockPlugin.foreshadowingManager.parseEntries(fsContent);
+            expect(entries[0].important).toBe(false);
+            expect(entries[1].important).toBe(true);
+
+            // Toggle legacy creation card -> preserves legacy heading and custom metadata, reflects on recovery card after reload
+            await service.setReferenceImportance(refs[1], true);
+            expect(fsContent).toContain('## [[Chapter 1]] - 2026-01-03 10:00\n<!-- wn-important -->');
+            expect(fsContent).toContain('**自定义字段**：PreserveMe');
+            service.clearCache();
+            const reloaded = await service.prefetchReferences(ch1);
+            expect(reloaded[1].important).toBe(true);
+            expect(reloaded[2].important).toBe(true);
+
+            // Toggle via recovery card -> unmarks same record and keeps legacy metadata intact
+            await service.setReferenceImportance(reloaded[2], false);
+            entries = mockPlugin.foreshadowingManager.parseEntries(fsContent);
+            expect(entries[2].important).toBe(false);
+            expect(fsContent).toContain('## [[Chapter 1]] - 2026-01-03 10:00');
+            expect(fsContent).toContain('**自定义字段**：PreserveMe');
+
+            await service.destroy();
+        });
+    });
+
+    describe('Pending events and time-pending nodes (Regressions)', () => {
+        const makeVaultHarness = (initialContent = '') => {
+            const tlFile = Object.assign(new TFile(), {
+                name: 'Timeline.md',
+                basename: 'Timeline',
+                path: 'Book 1/Timeline.md',
+                extension: 'md',
+                stat: { mtime: 1, size: initialContent.length }
+            });
+            const ch1 = Object.assign(new TFile(), {
+                name: 'Chapter 1.md',
+                basename: 'Chapter 1',
+                path: 'Book 1/Chapter 1.md',
+                extension: 'md'
+            });
+            const fmMap = new Map<string, Record<string, unknown>>();
+            let content = initialContent;
+
+            mockApp.vault.getAbstractFileByPath.mockImplementation((p: string) => {
+                if (p === tlFile.path) return tlFile;
+                if (p === ch1.path) return ch1;
+                return null;
+            });
+            mockApp.vault.create.mockImplementation(async (_p: string, text: string) => {
+                content = text;
+                return tlFile;
+            });
+            mockApp.vault.read.mockImplementation(async () => content);
+            mockApp.vault.cachedRead.mockImplementation(async () => content);
+            mockApp.vault.process.mockImplementation(async (_file: TFile, cb: (c: string) => string) => {
+                content = cb(content);
+                tlFile.stat.mtime += 1;
+                tlFile.stat.size = content.length;
+                return content;
+            });
+            mockApp.metadataCache.getFirstLinkpathDest.mockImplementation((link: string) => {
+                if (link === 'Chapter 1') return ch1;
+                return null;
+            });
+            mockApp.metadataCache.fileToLinktext.mockImplementation((file: TFile) => file.basename);
+            mockApp.metadataCache.getFileCache.mockImplementation((file: TFile) => ({
+                frontmatter: fmMap.get(file.path)
+            }));
+            mockApp.fileManager.processFrontMatter.mockImplementation(async (file: TFile, fn: (fm: Record<string, unknown>) => void) => {
+                const fm = fmMap.get(file.path) ?? {};
+                fn(fm);
+                fmMap.set(file.path, { ...fm });
+            });
+            mockPlugin.getTrackedMarkdownFiles.mockReturnValue([ch1]);
+            mockPlugin.getVaultMarkdownFiles.mockReturnValue([ch1]);
+
+            return {
+                tlFile,
+                ch1,
+                fmMap,
+                getContent: () => content,
+                setContent: (next: string) => { content = next; }
+            };
+        };
+
+        it('leaves other timeline Markdown byte-for-byte intact when editing the pending list', async () => {
+            const initial = '# Plot notes\r\n\r\nCompare the two openings.\r\n\r\n---\n\n## Nightfall\n\n- Hear the signal\n';
+            const harness = makeVaultHarness(initial);
+            const { event } = await manager.addPendingEvent({ description: 'Investigate the signal' }, 'Book 1');
+            expect(harness.getContent().startsWith(initial)).toBe(true);
+            await manager.updatePendingEvent(event.id, { description: 'Follow the signal' }, 'Book 1', event);
+            const pending = manager.parsePendingEvents(harness.getContent());
+            expect(pending[0].description).toBe('Follow the signal');
+            expect(harness.getContent().startsWith(initial)).toBe(true);
+            await manager.deletePendingEvent(event.id, 'Book 1', pending[0]);
+            expect(harness.getContent()).toBe(initial);
+        });
+
+        it('keeps empty pending cards distinct and editable across reloads', async () => {
+            const harness = makeVaultHarness('## Nightfall\n\n- Existing event\n\n---\n');
+            const { event: first } = await manager.addPendingEvent({ description: '' }, 'Book 1');
+            const { event: second } = await manager.addPendingEvent({ description: '  ' }, 'Book 1');
+            expect(first.id).not.toBe(second.id);
+            expect(manager.parsePendingEvents(harness.getContent())).toEqual([second, first]);
+
+            const beforePlacement = harness.getContent();
+            await expect(manager.placePendingEventIntoNode(first.id, 0, undefined, 'Book 1', first)).rejects.toThrow();
+            await expect(manager.createNodeFromPendingEvent(first.id, { time: 'Morning' }, {}, 'Book 1', first)).rejects.toThrow();
+            expect(harness.getContent()).toBe(beforePlacement);
+
+            await manager.updatePendingEvent(first.id, { description: 'Follow the signal' }, 'Book 1', first);
+            let [blank, edited] = manager.parsePendingEvents(harness.getContent());
+            expect(edited).toMatchObject({ id: first.id, description: 'Follow the signal' });
+            await manager.updatePendingEvent(first.id, { description: '' }, 'Book 1', edited);
+            await manager.updatePendingEvent(second.id, { important: true }, 'Book 1', blank);
+            [blank, edited] = manager.parsePendingEvents(harness.getContent());
+            expect(blank.important).toBe(true);
+            expect(edited).toEqual(first);
+            await manager.updatePendingEvent(second.id, { important: false }, 'Book 1', blank);
+            expect(manager.parsePendingEvents(harness.getContent())).toEqual([second, first]);
+
+            await manager.deletePendingEvent(first.id, 'Book 1', first);
+            expect(manager.parsePendingEvents(harness.getContent())).toEqual([second]);
+        });
+
+        it('keeps a resolved node independent when editing it next to a node of the same time', async () => {
+            const harness = makeVaultHarness('## Nightfall\n\n- First event\n\n---\n');
+            await manager.appendEntry({
+                time: '', timePending: true, description: 'Second event', chapter: '', rawBlock: ''
+            }, 'Book 1');
+            const pending = manager.parseEntries(harness.getContent())[1];
+            await manager.updateEntry(1, { ...pending, time: 'Nightfall', timePending: undefined }, 'Book 1', pending);
+            const resolved = manager.parseEntries(harness.getContent())[1];
+            expect(resolved.nodeId).toBe(pending.nodeId);
+            await manager.updateEntry(1, {
+                ...resolved, items: [{ description: 'Second event revised', chapter: '' }]
+            }, 'Book 1', resolved);
+            expect(manager.parseEntries(harness.getContent()).map(entry => entry.description))
+                .toEqual(['First event', 'Second event revised']);
+        });
+
+        it('round-trips pending events and multiple distinct time-pending nodes without exposing pending events to parseEntries', async () => {
+            const harness = makeVaultHarness('');
+            const mgr = manager as unknown as TimelineManager & {
+                addPendingEvent: (input: { description: string; chapter?: string; origin?: string; important?: boolean }, folderPath?: string) => Promise<{ content: string; event: { id: string; description: string; chapter: string; origin?: string; important?: boolean } }>;
+                loadDocument: (folderPath?: string) => Promise<{ entries: TimelineEntry[]; pendingEvents: Array<{ id: string; description: string; chapter: string; origin?: string; important?: boolean }> } | null>;
+            };
+
+            // Add two empty/identical time-pending nodes
+            await manager.appendEntry({
+                time: '',
+                timePending: true,
+                type: '主线',
+                description: '',
+                chapter: '',
+                rawBlock: '',
+                items: []
+            } as TimelineEntry, 'Book 1');
+            await manager.appendEntry({
+                time: '',
+                timePending: true,
+                type: '主线',
+                description: '',
+                chapter: '',
+                rawBlock: '',
+                items: []
+            } as TimelineEntry, 'Book 1');
+
+            // Add two pending events with identical text (newest on top)
+            const first = await mgr.addPendingEvent({ description: '重复灵感', chapter: 'Chapter 1', origin: '原句甲', important: true }, 'Book 1');
+            const second = await mgr.addPendingEvent({ description: '重复灵感' }, 'Book 1');
+
+            // Regular parseEntries/loadEntries must NOT see pending section
+            const formalEntries = await manager.loadEntries('Book 1');
+            expect(formalEntries).toHaveLength(2);
+            expect((formalEntries![0] as TimelineEntry & { timePending?: boolean; nodeId?: string }).timePending).toBe(true);
+            expect((formalEntries![1] as TimelineEntry & { timePending?: boolean; nodeId?: string }).timePending).toBe(true);
+            expect(formalEntries![0].time).toBe('');
+            expect(formalEntries![1].time).toBe('');
+            expect((formalEntries![0] as TimelineEntry & { nodeId?: string }).nodeId).toBeTruthy();
+            expect((formalEntries![1] as TimelineEntry & { nodeId?: string }).nodeId).toBeTruthy();
+            expect((formalEntries![0] as TimelineEntry & { nodeId?: string }).nodeId).not.toBe((formalEntries![1] as TimelineEntry & { nodeId?: string }).nodeId);
+
+            const doc = await mgr.loadDocument('Book 1');
+            expect(doc?.entries).toHaveLength(2);
+            expect(doc?.pendingEvents).toHaveLength(2);
+            expect(doc?.pendingEvents[0].id).toBe(second.event.id);
+            expect(doc?.pendingEvents[1].id).toBe(first.event.id);
+            expect(doc?.pendingEvents[1].chapter).toBe('Chapter 1');
+            expect(doc?.pendingEvents[1].origin).toBe('原句甲');
+            expect(doc?.pendingEvents[1].important).toBe(true);
+            expect(harness.getContent()).toContain('<!-- wn-pending-events:start -->');
+
+            // Preserves pending section across normal node rewrite (update/delete/sync)
+            await manager.updateEntry(0, {
+                ...formalEntries![0],
+                items: [{ description: '待定节点新事件', chapter: 'Chapter 1' }]
+            }, 'Book 1', formalEntries![0]);
+            const afterRewrite = await mgr.loadDocument('Book 1');
+            expect(afterRewrite?.pendingEvents).toHaveLength(2);
+            expect(afterRewrite?.entries).toHaveLength(2);
+            // Must NOT leak fake time into chapter frontmatter while timePending is true
+            expect(harness.fmMap.get(harness.ch1.path)?.timeline).toBeUndefined();
+        });
+
+        it('keeps same node and position when filling real time on a time-pending node and reconciles frontmatter afterwards', async () => {
+            const harness = makeVaultHarness('');
+            await manager.appendEntry({ time: '第1天', type: '主线', description: '开端', chapter: '', rawBlock: '', items: [{ description: '开端', chapter: '' }] }, 'Book 1');
+            await manager.appendEntry({
+                time: '',
+                timePending: true,
+                type: '主线',
+                description: '中段待定',
+                chapter: 'Chapter 1',
+                rawBlock: '',
+                items: [{ description: '中段待定', chapter: 'Chapter 1', origin: '中段原文' }]
+            } as TimelineEntry, 'Book 1');
+            await manager.appendEntry({ time: '第9天', type: '主线', description: '尾声', chapter: '', rawBlock: '', items: [{ description: '尾声', chapter: '' }] }, 'Book 1');
+
+            const before = (await manager.loadEntries('Book 1'))!;
+            expect(before).toHaveLength(3);
+            expect(harness.fmMap.get(harness.ch1.path)?.timeline).toBeUndefined();
+
+            // Chapter lookup still finds linked undated node without fake time
+            const nodesBefore = manager.getTimelineNodesForChapter(harness.ch1, before, 'Book 1', harness.tlFile);
+            expect(nodesBefore).toHaveLength(1);
+            expect(nodesBefore[0].time).toBe('');
+            expect((nodesBefore[0] as { timePending?: boolean }).timePending).toBe(true);
+
+            // Fill in real time on middle undated node -> stays at index 1 and reconciles frontmatter
+            await manager.updateEntry(1, {
+                ...before[1],
+                time: '第5天',
+                timePending: false
+            } as TimelineEntry, 'Book 1', before[1]);
+
+            const after = (await manager.loadEntries('Book 1'))!;
+            expect(after.map(e => e.time)).toEqual(['第1天', '第5天', '第9天']);
+            expect((after[1] as TimelineEntry & { timePending?: boolean }).timePending).toBeFalsy();
+            expect(harness.fmMap.get(harness.ch1.path)?.timeline).toBe('第5天');
+        });
+
+        it('performs atomic single-process pending <-> node moves, preserves empty structural nodes on return, and keeps pending card on conflict', async () => {
+            const harness = makeVaultHarness('');
+            const mgr = manager as unknown as TimelineManager & {
+                addPendingEvent: (input: { description: string; chapter?: string; origin?: string; important?: boolean }, folderPath?: string) => Promise<{ content: string; event: { id: string; description: string; chapter: string; origin?: string; important?: boolean } }>;
+                placePendingEventIntoNode: (pendingId: string, targetEntryIndex: number, targetItemIndex: number | undefined, folderPath?: string, expectedPending?: unknown, expectedTargetEntry?: TimelineEntry) => Promise<string>;
+                createNodeFromPendingEvent: (pendingId: string, nodeSpec: { time: string; timePending?: boolean; type?: string; lores?: string[] }, anchor: { afterEntryIndex?: number; expectedAfterEntry?: TimelineEntry; beforeEntryIndex?: number; expectedBeforeEntry?: TimelineEntry; fallbackIndex?: number }, folderPath?: string, expectedPending?: unknown) => Promise<string>;
+                moveEventToPending: (sourceEntryIndex: number, sourceItemIndex: number, folderPath?: string, expectedItem?: unknown, expectedSourceEntry?: TimelineEntry) => Promise<string>;
+                loadDocument: (folderPath?: string) => Promise<{ entries: TimelineEntry[]; pendingEvents: Array<{ id: string; description: string; chapter: string; origin?: string; important?: boolean }> } | null>;
+            };
+
+            await manager.appendEntry({ time: '第1天', type: '主线', description: '甲事件', chapter: '', rawBlock: '', lores: ['人物甲'], items: [{ description: '甲事件', chapter: '' }] }, 'Book 1');
+            await manager.appendEntry({ time: '第3天', type: '支线', description: '乙事件', chapter: '', rawBlock: '', items: [{ description: '乙事件', chapter: '' }] }, 'Book 1');
+            await manager.appendEntry({ time: '第5天', type: '主线', description: '丙事件', chapter: '', rawBlock: '', items: [{ description: '丙事件', chapter: '' }] }, 'Book 1');
+
+            const added = await mgr.addPendingEvent({ description: '待排冲突测试', chapter: 'Chapter 1', origin: '引用原文', important: true }, 'Book 1');
+            const doc1 = (await mgr.loadDocument('Book 1'))!;
+            mockApp.vault.process.mockClear();
+
+            // Place between filtered nodes 第1天 (idx 0) and 第5天 (idx 2) -> creates new node after idx 0 (actual idx 1) in a SINGLE vault.process
+            await mgr.createNodeFromPendingEvent(
+                added.event.id,
+                { time: '第2天', type: '主线' },
+                { afterEntryIndex: 0, expectedAfterEntry: doc1.entries[0], beforeEntryIndex: 2, expectedBeforeEntry: doc1.entries[2] },
+                'Book 1',
+                doc1.pendingEvents[0]
+            );
+            expect(mockApp.vault.process).toHaveBeenCalledTimes(1);
+            const doc2 = (await mgr.loadDocument('Book 1'))!;
+            expect(doc2.pendingEvents).toHaveLength(0);
+            expect(doc2.entries.map(e => e.time)).toEqual(['第1天', '第2天', '第3天', '第5天']);
+            expect(doc2.entries[1].items?.[0]).toMatchObject({ description: '待排冲突测试', chapter: 'Chapter 1', origin: '引用原文', important: true });
+            expect(harness.fmMap.get(harness.ch1.path)?.timeline).toBe('第2天');
+
+            // Return last event of 第2天 back to pending in a SINGLE vault.process -> keeps 第2天 as empty structural node, clears chapter frontmatter
+            mockApp.vault.process.mockClear();
+            await mgr.moveEventToPending(1, 0, 'Book 1', doc2.entries[1].items![0], doc2.entries[1]);
+            expect(mockApp.vault.process).toHaveBeenCalledTimes(1);
+            const doc3 = (await mgr.loadDocument('Book 1'))!;
+            expect(doc3.entries.map(e => e.time)).toEqual(['第1天', '第2天', '第3天', '第5天']);
+            expect(doc3.entries[1].type).toBe('主线');
+            expect(doc3.entries[1].items).toEqual([]);
+            expect(doc3.pendingEvents).toHaveLength(1);
+            expect(doc3.pendingEvents[0]).toMatchObject({ description: '待排冲突测试', chapter: 'Chapter 1', origin: '引用原文', important: true });
+            expect(harness.fmMap.get(harness.ch1.path)?.timeline).toBeUndefined();
+
+            // Conflict failure must NOT lose pending card
+            const staleTarget = { ...doc3.entries[0], time: '已过期时间' };
+            await expect(
+                mgr.placePendingEventIntoNode(doc3.pendingEvents[0].id, 0, 0, 'Book 1', doc3.pendingEvents[0], staleTarget)
+            ).rejects.toThrow();
+            const docAfterConflict = (await mgr.loadDocument('Book 1'))!;
+            expect(docAfterConflict.pendingEvents).toHaveLength(1);
+            expect(docAfterConflict.pendingEvents[0].description).toBe('待排冲突测试');
+
+            // Retry into empty node 第2天 succeeds in single vault.process
+            mockApp.vault.process.mockClear();
+            await mgr.placePendingEventIntoNode(docAfterConflict.pendingEvents[0].id, 1, 0, 'Book 1', docAfterConflict.pendingEvents[0], docAfterConflict.entries[1]);
+            expect(mockApp.vault.process).toHaveBeenCalledTimes(1);
+            const doc4 = (await mgr.loadDocument('Book 1'))!;
+            expect(doc4.pendingEvents).toHaveLength(0);
+            expect(doc4.entries[1].items).toHaveLength(1);
+            expect(doc4.entries[1].items![0].origin).toBe('引用原文');
+            expect(harness.fmMap.get(harness.ch1.path)?.timeline).toBe('第2天');
         });
     });
 });

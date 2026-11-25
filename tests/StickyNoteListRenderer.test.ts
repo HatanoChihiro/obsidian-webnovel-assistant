@@ -286,7 +286,7 @@ Object.assign(globalThis, {
 
 const fakeEvent = { stopPropagation: () => {} } as unknown as MouseEvent;
 
-import { Component, TFile, type App } from 'obsidian';
+import { Component, Platform, TFile, type App } from 'obsidian';
 import {
 	StickyNoteListRenderer,
 	getStickyNoteEditorContent,
@@ -609,6 +609,28 @@ describe('StickyNoteListRenderer paragraph editor', () => {
 describe('StickyNoteListRenderer Reading & Editing Interactions', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+	});
+
+	it('uses an always-visible toolbar in mobile immersive mode and keeps hover reveal on desktop', () => {
+		const previousMobile = Platform.isMobile;
+		const { plugin, vaultFiles } = createMockPlugin([]);
+		const app = createMockApp(vaultFiles);
+		const container = new MockElement();
+		const renderer = new StickyNoteListRenderer(app, plugin, asHTMLElement(container), { mode: 'immersive' });
+		try {
+			Platform.isMobile = true;
+			renderer.render();
+			expect(container.querySelector('.wn-sticky-note-list-toolbar')).not.toBeNull();
+			expect(container.querySelector('.wn-immersive-sticky-trigger')).toBeNull();
+
+			Platform.isMobile = false;
+			renderer.render();
+			expect(container.querySelector('.wn-immersive-sticky-toolbar')).not.toBeNull();
+			expect(container.querySelector('.wn-immersive-sticky-trigger')).not.toBeNull();
+		} finally {
+			renderer.destroy();
+			Platform.isMobile = previousMobile;
+		}
 	});
 
 	it('renders existing notes as Markdown reading cards by default with stripped frontmatter', async () => {

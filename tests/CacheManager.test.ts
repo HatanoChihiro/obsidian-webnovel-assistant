@@ -960,5 +960,60 @@ describe('CacheManager', () => {
             expect((manager as unknown as { pathRevisions?: Map<string, number> }).pathRevisions).toBeUndefined();
             expect((manager as unknown as { activeReadTokens?: Map<string, unknown> }).activeReadTokens?.size ?? 0).toBe(0);
         });
+
+        it('buildFolderCache: scoped cold enumeration uses tracked Markdown list instead of enumerating vault root', async () => {
+            const scopedFile = createTestFile('Chapter 1.md', 'Book 1/Chapter 1.md');
+            scopedFile.stat = { mtime: 10, ctime: 10, size: 50 };
+            const rootFile = createTestFile('Ignored.md', 'Ignored.md');
+            rootFile.stat = { mtime: 10, ctime: 10, size: 50 };
+
+            const { vault } = setupVaultForRebuild([scopedFile], async () => 'scoped content');
+            (vault.getRoot() as TFolder).children.push(rootFile);
+            const recurseSpy = vi.spyOn(Vault, 'recurseChildren');
+            recurseSpy.mockClear();
+
+            mockAdapter.exists.mockResolvedValue(false); // cold cache
+            await manager.buildFolderCache();
+
+            expect(manager.getFileCache(scopedFile.path)).toBe(2);
+            expect(manager.getFileCache(rootFile.path)).toBeNull();
+            // Should not recurse vault root during cold build
+            expect(recurseSpy).not.toHaveBeenCalled();
+            expect(vault.cachedRead).toHaveBeenCalledExactlyOnceWith(scopedFile);
+            recurseSpy.mockRestore();
+        });
+
+        it.each(['cold', 'warm', 'manual'] as const)('stops a %s rebuild awaiting a read when the plugin unloads', async mode => {
+            const file = createTestFile('Chapter 1.md', 'Book 1/Chapter 1.md');
+            file.stat = { mtime: 10, ctime: 10, size: 50 };
+            const deferred = createDeferred<string>();
+            const { vault } = setupVaultForRebuild([file], () => deferred.promise);
+            if (mode === "warm") {
+                manager['cache'].set(file.path, { path: file.path, wordCount: 5, lastModified: 1 });
+            }
+            const originalMobile = Platform.isMobile;
+            Platform.isMobile = true;
+            try {
+                mockAdapter.exists.mockResolvedValue(false);
+                const build = mode === "manual"
+                    ? manager.buildInitialCache(vault, () => 2)
+                    : manager.buildFolderCache();
+                await vi.waitFor(() => expect(vault.cachedRead).toHaveBeenCalledExactlyOnceWith(file));
+
+                mockPlugin.isUnloading = true;
+                await manager.saveCache();
+                mockAdapter.write.mockClear();
+                const timersAtUnload = vi.getTimerCount();
+                deferred.resolve('late words after shutdown');
+                await build;
+
+                expect(manager.getFileCache(file.path)).toBe(mode === "warm" ? 5 : null);
+                expect(mockAdapter.write).not.toHaveBeenCalled();
+                expect(vi.getTimerCount()).toBe(timersAtUnload);
+                expect(mockWorkspace.trigger).not.toHaveBeenCalledWith('webnovel:file-word-count-updated', expect.anything(), expect.anything());
+            } finally {
+                Platform.isMobile = originalMobile;
+            }
+        });
     });
 });

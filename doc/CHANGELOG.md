@@ -1,3 +1,69 @@
+## 🚀 v4.2.0
+
+### 新增功能
+
+#### 时间轴待排事件
+
+时间轴工作台新增「待排事件」，用于记录尚未安排的情节。
+
+- 待排区支持记录事件、添加空白卡片和标记重要事件。事件卡片可在待排区与时间线之间双向拖动。
+- 时间线支持建立「时间待定」节点，并在原节点补填时间。
+- 时间线节点支持长按圆点后整体拖动，节点内的事件随之移动。
+- 待排事件和未关联章节支持独立滚动。平板时间轴侧栏随工作区宽度调整。
+- 手机和平板可收起和展开时间轴侧栏，为主时间线腾出空间。
+
+### 功能优化
+
+- **移动端沉浸模式**在支持的手机和平板上隐藏系统状态栏，退出时恢复，并为底部手势保留空间。顶栏支持左侧摄像头挖孔避让，沉浸便签的工具栏保持可见。
+- **移动端写作统计**开放全部九项统计，沉浸顶栏与普通编辑的统计悬浮窗共用显示选项。可用空间不足时，统计项自动换行，单项数值保持单行。悬浮窗开关与专注判定阈值集中在「沉浸模式」设置中。
+- **桌面沉浸顶栏**新增原稿模式快捷开关，支持独立设置该开关的显隐。
+- **正文中的时间线与伏笔悬浮卡**支持为对应记录设置或取消星标。
+- **工作台**将设定表格与卡片视图的筛选项统一放在搜索框下方，筛选控件与时间轴保持一致。横向列表支持鼠标滚轮与触屏滑动，平板导航布局更紧凑。
+- **创作主页**为未分配系列的存稿、暂停和完结作品显示「无归属」角标。
+- **性能与资源占用**方面，减少启动时重复的字数统计与设定读取，降低工作台全文搜索的内存占用，并减少设定图谱和移动统计悬浮窗的重复更新。
+
+### Bug 修复
+
+- 修复快速编辑设定时无法从下拉列表选择已有类型的问题。
+- 修复编辑关系时工作台图谱与独立设定图谱的节点跳动问题。
+- 修复关闭打字机滚动时，点击沉浸原稿的邻章正文切章后视口偏离点击位置的问题。
+- 修复手机端未关联章节卡片的星标与状态徽章重叠，以及窄屏设定看板的搜索框换行问题。
+- 修复停用或重载插件后，未完成的目录字数重建仍继续写入统计的问题。
+- 修复创作主页在加载过程中关闭时可能遗留界面资源的问题。
+
+### English Changelog
+
+#### New Features
+
+##### Pending Events in the Workbench Timeline
+
+Pending Events provides a place to keep plot points before scheduling them on the timeline.
+
+- Pending Events supports event descriptions, blank cards, and stars for important events. Event cards can be dragged between Pending Events and the timeline in either direction.
+- The timeline supports **Time TBD** nodes whose times can be filled in later.
+- Press-and-hold dragging from a node's dot reorders the entire node and its events.
+- Pending Events and Unassociated Chapters scroll independently. On tablets, the timeline sidebar adjusts to the workspace width.
+- On phones and tablets, the timeline sidebar can be collapsed and expanded to give the main timeline more room.
+
+#### Improvements
+
+- **Mobile immersive mode** hides the system status bar on supported phones and tablets, restores it on exit, and leaves room for bottom gestures. The top bar supports left-side camera cutout clearance, and the notes toolbar stays visible.
+- **Mobile writing statistics** now include nine selectable items. The immersive top bar and the floating stats widget in regular editing share the same display options. Both displays wrap stats to fit while keeping each value on one line. The floating widget toggle and focus threshold are grouped in Immersive Mode settings.
+- **The desktop immersive top bar** adds a manuscript mode toggle with its own visibility setting.
+- **Timeline and foreshadowing hover cards** in chapter text support marking or unmarking the linked entry as important.
+- **The Workbench** places the same filters below the search box in the lore table and card views, with controls consistent with the timeline. Horizontal lists support mouse-wheel scrolling and touch swipes, and tablet navigation takes up less space.
+- **The creation homepage** shows an **Unassigned** badge on drafting, paused, and completed works without a series.
+- **Performance improvements** reduce repeated word counting and lore reads at startup, memory use during Workbench full-text searches, and redundant updates to lore graphs and the mobile stats widget.
+
+#### Bug Fixes
+
+- Fixed existing lore types being unavailable in the quick-edit dropdown.
+- Fixed nodes jumping when editing relationships in the Workbench and standalone lore graphs.
+- Fixed the viewport shifting away from the clicked passage after switching chapters in immersive manuscript mode with typewriter scrolling disabled.
+- Fixed stars overlapping status badges on cards in Unassociated Chapters on phones and the lore board search box wrapping in narrow views.
+- Fixed an unfinished folder word count rebuild continuing to write statistics after the plugin was disabled or reloaded.
+- Fixed UI resources sometimes remaining active when the creation homepage was closed while loading.
+
 ## 🚀 v4.1.0
 
 ### 新增功能

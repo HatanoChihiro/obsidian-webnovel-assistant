@@ -168,6 +168,8 @@ describe('WorkerManager', () => {
     });
 
     it('uses timer-only refresh for stable ticks and triggers full refresh exactly once at midnight', () => {
+        const update = vi.fn();
+        mockPlugin.mobileFloatingStats = { updateTimerUI: vi.fn(), update };
         let currentDate = '2026-07-23';
         (global as unknown as { window: { moment: () => { format: () => string } } }).window.moment = () => ({
             format: () => currentDate
@@ -212,6 +214,7 @@ describe('WorkerManager', () => {
 
         expect(mockPlugin.refreshStatusViews).toHaveBeenCalledTimes(1); // not called again
         expect(mockPlugin.refreshStatusTimers).toHaveBeenCalledTimes(3);
+        expect(update).toHaveBeenCalledOnce();
     });
 
     describe('workspace-scoped focus timer optimization', () => {
@@ -774,8 +777,8 @@ describe('WorkerManager', () => {
 
             mockPlugin.app.workspace.getActiveFile.mockReturnValue(refOutsideFile);
             mockPlugin.immersiveModeManager = {
-                isMobileImmersiveSessionActive: () => true,
-                getActiveSessionMainFile: () => mainFile,
+                isMobileDataIsolationActive: () => true,
+                getDataScopedMainFile: () => mainFile,
                 isMainEditorOrigin: (info: unknown, editor?: unknown) =>
                     info === mainView || editor === mainEditor
             };

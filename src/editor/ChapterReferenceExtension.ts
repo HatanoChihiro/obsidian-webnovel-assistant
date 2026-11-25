@@ -33,14 +33,43 @@ export function buildChapterReferenceExtension(app: App, plugin: WebNovelAssista
 		private unsubscribe: (() => void) | null = null;
 		private popover: ChapterReferencePopover | null = null;
 		private target: HTMLElement | null = null;
+		private activeStarWrites = 0;
+		private hasCompletedStarWrite = false;
+		private deferredRefresh = false;
+		private refreshMicrotaskQueued = false;
 		private touch: { x: number; y: number; time: number } | null = null;
 		private suppressClickUntil = 0;
 
-		constructor(view: EditorView) {
+		constructor(private view: EditorView) {
 			this.unsubscribe = plugin.chapterReferenceService.onRefresh(() => {
-				if (!this.destroyed) view.dispatch({ effects: forceReferenceUpdate.of(null) });
+				if (this.destroyed) return;
+				if (this.shouldDeferRefresh()) {
+					this.deferredRefresh = true;
+					return;
+				}
+				view.dispatch({ effects: forceReferenceUpdate.of(null) });
 			});
 			this.render(view, true);
+		}
+		private shouldDeferRefresh(): boolean {
+			return Boolean(
+				this.popover &&
+				(this.activeStarWrites > 0 || this.hasCompletedStarWrite) &&
+				plugin.chapterReferenceService.isAnyReferenceEnabled()
+			);
+		}
+		private scheduleDeferredRefresh(): void {
+			if (this.refreshMicrotaskQueued || this.destroyed) return;
+			this.refreshMicrotaskQueued = true;
+			queueMicrotask(() => {
+				this.refreshMicrotaskQueued = false;
+				if (this.destroyed) return;
+				if (this.shouldDeferRefresh()) {
+					this.deferredRefresh = true;
+					return;
+				}
+				this.view.dispatch({ effects: forceReferenceUpdate.of(null) });
+			});
 		}
 		private getFile(view: EditorView): TFile | null {
 			return view.state.field(editorInfoField, false)?.file ?? null;
@@ -68,24 +97,30 @@ export function buildChapterReferenceExtension(app: App, plugin: WebNovelAssista
 				this.closePopover();
 				return;
 			}
-			const items = plugin.chapterReferenceService.getReferencesSync(file);
+			const syncedItems = plugin.chapterReferenceService.getReferencesSync(file);
+			let items = syncedItems;
 			if (items === null) {
-				this.decorations = Decoration.none;
-				this.clusters = [];
-				if (!this.pending) {
-					this.pending = true;
-					const request = this.request;
-					const path = this.path;
-					void plugin.chapterReferenceService.prefetchReferences(file).then(() => {
-						if (this.destroyed || request !== this.request || this.getFile(view) !== file || file.path !== path) return;
-						this.pending = false;
-						view.dispatch({ effects: forceReferenceUpdate.of(null) });
-					}).catch(error => {
-						if (!this.destroyed && request === this.request) this.pending = false;
-						console.error('[ChapterReferenceExtension] Could not read references:', error);
-					});
+				if (!force && this.shouldDeferRefresh() && this.items !== null) {
+					this.deferredRefresh = true;
+					items = this.items;
+				} else {
+					this.decorations = Decoration.none;
+					this.clusters = [];
+					if (!this.pending) {
+						this.pending = true;
+						const request = this.request;
+						const path = this.path;
+						void plugin.chapterReferenceService.prefetchReferences(file).then(() => {
+							if (this.destroyed || request !== this.request || this.getFile(view) !== file || file.path !== path) return;
+							this.pending = false;
+							view.dispatch({ effects: forceReferenceUpdate.of(null) });
+						}).catch(error => {
+							if (!this.destroyed && request === this.request) this.pending = false;
+							console.error('[ChapterReferenceExtension] Could not read references:', error);
+						});
+					}
+					return;
 				}
-				return;
 			}
 			const visibleKey = view.visibleRanges.map(range => range.from + ':' + range.to).join(',');
 			if (items !== this.items || this.lastDoc !== view.state.doc || visibleKey !== this.visibleKey) {
@@ -123,7 +158,19 @@ export function buildChapterReferenceExtension(app: App, plugin: WebNovelAssista
 			this.normalizedDoc = null;
 			this.visibleKey = '';
 		}
-		private closePopover(): void { this.popover?.hide(); this.popover = null; this.target = null; }
+		private closePopover(): void {
+			const popover = this.popover;
+			this.popover = null;
+			this.target = null;
+			this.activeStarWrites = 0;
+			this.hasCompletedStarWrite = false;
+			const shouldFlush = this.deferredRefresh;
+			this.deferredRefresh = false;
+			popover?.hide();
+			if (shouldFlush && !this.destroyed) {
+				this.scheduleDeferredRefresh();
+			}
+		}
 		private resolveTarget(event: Event): HTMLElement | null {
 			const target = event.target as Element | null;
 			const element = typeof target?.closest === 'function' ? target : target?.parentElement;
@@ -144,8 +191,39 @@ export function buildChapterReferenceExtension(app: App, plugin: WebNovelAssista
 			if (!cluster || !plugin.chapterReferenceService.isAnyReferenceEnabled()) return;
 			this.closePopover();
 			LoreHoverPopover.closeForDocument(target.ownerDocument);
-			this.popover = new ChapterReferencePopover(target, cluster.items, app, immediate, () => { this.popover = null; this.target = null; });
-			this.target = target;
+			let hidden = false;
+			const popover = new ChapterReferencePopover(target, cluster.items, app, immediate, () => {
+				hidden = true;
+				if (this.popover === popover) {
+					this.popover = null;
+					this.target = null;
+					this.activeStarWrites = 0;
+					this.hasCompletedStarWrite = false;
+					if (this.deferredRefresh && !this.destroyed) {
+						this.deferredRefresh = false;
+						this.scheduleDeferredRefresh();
+					}
+				}
+			}, {
+				onToggleImportance: (item, important) => plugin.chapterReferenceService.setReferenceImportance(item, important),
+				onImportanceWriteStart: () => {
+					if (this.popover === popover) {
+						this.activeStarWrites++;
+					}
+				},
+				onImportanceWriteEnd: (succeeded) => {
+					if (this.popover === popover) {
+						this.activeStarWrites = Math.max(0, this.activeStarWrites - 1);
+						if (succeeded) {
+							this.hasCompletedStarWrite = true;
+						}
+					}
+				}
+			});
+			if (!hidden) {
+				this.popover = popover;
+				this.target = target;
+			}
 		}
 		handleTouchStart(event: TouchEvent): void {
 			const touch = event.touches[0];

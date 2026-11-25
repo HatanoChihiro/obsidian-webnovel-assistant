@@ -11,10 +11,11 @@ import {
 } from '../services/SettingsSearchService';
 import { MobileFloatingStats } from './MobileFloatingStats';
 import type { FloatingStickyNote } from './StickyNote';
-import type { ThemeScheme } from '../types/settings';
+import type { MobileDashboardStatKey, ThemeScheme } from '../types/settings';
 import { WORKBENCH_BOARD_IDS, getWorkbenchBoardLabel } from './workbenchBoards';
 import { VALIDATION_RULES, DEFAULT_PROOFREADING_SETTINGS, VIEW_TYPES } from '../constants';
-import { sanitizeMobileAuxPanelState } from '../services/MobileImmersivePanelGeometry';
+import { sanitizeMobileDashboardItems, toggleMobileDashboardItem } from '../services/MobileDashboardStats';
+import { sanitizeMobileAuxPanelState, sanitizeMobileCutoutOffset } from '../services/MobileImmersivePanelGeometry';
 import { MOBILE_AUX_VIEW_LABEL_KEYS } from './MobileImmersiveController';
 import type { WebNovelAssistantPlugin } from '../types/plugin';
 import { LoreCardPreview } from './components/LoreCardPreview';
@@ -471,47 +472,6 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 
 	// ── 通用设置 ──
 	private displayGeneralSettings(containerEl: HTMLElement): void {
-		// 平台检测提示
-		const tier = getPlatformTier();
-		if (tier !== 'desktop') {
-			const mobileNotice = containerEl.createDiv({
-				cls: 'setting-item-description wn-settings-warning'
-			});
-			mobileNotice.createEl('strong', { text: tier === 'mobile' ? t('setting.mobile-mode') : t('setting.tablet-mode') });
-			mobileNotice.createEl('br');
-			mobileNotice.appendText(tier === 'mobile'
-				? t('setting.mobile-notice')
-				: t('setting.tablet-notice'));
-
-			new Setting(containerEl)
-				.setName(t('setting.show-floating-stats'))
-				.setDesc(t('setting.show-floating-stats-desc'))
-				.addToggle(toggle => toggle
-					.setValue(this.plugin.settings.showMobileFloatingStats)
-					.onChange(async (value) => {
-						this.plugin.settings.showMobileFloatingStats = value;
-						void this.plugin.saveSettings();
-						if (value) {
-							if (!this.plugin.mobileFloatingStats) this.plugin.mobileFloatingStats = new MobileFloatingStats(this.app, this.plugin);
-							this.plugin.mobileFloatingStats.load();
-						} else {
-							this.plugin.mobileFloatingStats?.unload();
-						}
-					}));
-
-			new Setting(containerEl)
-				.setName(t('setting.idle-threshold'))
-				.setDesc(t('setting.idle-threshold-desc'))
-				.addSlider(slider => slider
-					.setLimits(30, 600, 30)
-					.setValue(this.plugin.settings.idleTimeoutThreshold / 1000)
-					.then(attachLegacySliderValue)
-					.onChange(async (value) => {
-						this.plugin.settings.idleTimeoutThreshold = value * 1000;
-						await this.plugin.saveSettings();
-					}));
-		}
-
 		// 语言切换
 		new Setting(containerEl).setName(t('setting.language')).setDesc(t('setting.language-desc'))
 			.addDropdown(dropdown => {
@@ -1937,6 +1897,37 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 		if (desktop) {
 			this.displayImmersiveLayoutBuilder(containerEl);
 		} else {
+			new Setting(containerEl)
+				.setName(t('setting.show-floating-stats'))
+				.setDesc(t('setting.show-floating-stats-desc'))
+				.addToggle(toggle => toggle
+					.setValue(this.plugin.settings.showMobileFloatingStats)
+					.onChange(async (value) => {
+						this.plugin.settings.showMobileFloatingStats = value;
+						await this.plugin.saveSettings();
+						if (value) {
+							if (!this.plugin.mobileFloatingStats) {
+								this.plugin.mobileFloatingStats = new MobileFloatingStats(this.app, this.plugin);
+							}
+							this.plugin.mobileFloatingStats.load();
+							this.plugin.mobileFloatingStats.update();
+						} else {
+							this.plugin.mobileFloatingStats?.unload();
+						}
+					}));
+
+			new Setting(containerEl)
+				.setName(t('setting.idle-threshold'))
+				.setDesc(t('setting.idle-threshold-desc'))
+				.addSlider(slider => slider
+					.setLimits(30, 600, 30)
+					.setValue(this.plugin.settings.idleTimeoutThreshold / 1000)
+					.then(attachLegacySliderValue)
+					.onChange(async (value) => {
+						this.plugin.settings.idleTimeoutThreshold = value * 1000;
+						await this.plugin.saveSettings();
+					}));
+
 			new Setting(containerEl).setName(t('setting.immersive-mobile-aux-title')).setHeading();
 
 			const auxState = sanitizeMobileAuxPanelState(this.plugin.settings.immersive.mobileAuxPanel);
@@ -1959,6 +1950,42 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 							await this.plugin.saveSettings();
 						}
 					}));
+
+			let cutoutSliderSetting: Setting | null = null;
+			new Setting(containerEl)
+				.setName(t('setting.immersive-mobile-cutout-avoidance'))
+				.setDesc(t('setting.immersive-mobile-cutout-avoidance-desc'))
+				.addToggle(toggle => toggle
+					.setValue(Boolean(this.plugin.settings.immersive.mobileCutoutAvoidance))
+					.onChange(async (value) => {
+						this.plugin.settings.immersive.mobileCutoutAvoidance = value;
+						if (cutoutSliderSetting) {
+							cutoutSliderSetting.settingEl.hidden = !value;
+							cutoutSliderSetting.settingEl.classList.toggle('is-hidden', !value);
+						}
+						this.plugin.immersiveModeManager?.getMobileController()?.applyCutoutOffset();
+						await this.plugin.saveSettings();
+					}));
+
+			const { min, max } = VALIDATION_RULES.IMMERSIVE_MOBILE_CUTOUT_OFFSET;
+			const initialOffset = sanitizeMobileCutoutOffset(this.plugin.settings.immersive.mobileCutoutLeftOffset);
+
+			cutoutSliderSetting = new Setting(containerEl)
+				.setName(t('setting.immersive-mobile-cutout-offset'))
+				.setDesc(`${initialOffset}px`)
+				.addSlider(slider => slider
+					.setLimits(min, max, 2)
+					.setValue(initialOffset)
+					.then(attachLegacySliderValue)
+					.onChange(async (value) => {
+						this.plugin.settings.immersive.mobileCutoutLeftOffset = value;
+						cutoutSliderSetting?.setDesc(`${value}px`);
+						this.plugin.immersiveModeManager?.getMobileController()?.applyCutoutOffset();
+						await this.plugin.saveSettings();
+					}));
+
+			cutoutSliderSetting.settingEl.hidden = !this.plugin.settings.immersive.mobileCutoutAvoidance;
+			cutoutSliderSetting.settingEl.classList.toggle('is-hidden', !this.plugin.settings.immersive.mobileCutoutAvoidance);
 		}
 
 		new Setting(containerEl)
@@ -2077,101 +2104,82 @@ export class AccurateCountSettingTab extends PluginSettingTab {
 					}
 				}));
 
-		if (!desktop) {
-			return;
+		new Setting(containerEl)
+			.setName(t('setting.immersive-dashboard-toggles'))
+			.setHeading();
+
+		if (desktop) {
+			new Setting(containerEl)
+				.setName(t('setting.show-manuscript-control'))
+				.addToggle(toggle => toggle
+					.setValue(this.plugin.settings.immersive.immersiveShowManuscriptControl !== false)
+					.onChange(async (value) => {
+						this.plugin.settings.immersive.immersiveShowManuscriptControl = value;
+						await this.plugin.saveSettings();
+					}));
+
+			new Setting(containerEl)
+				.setName(t('setting.show-typewriter-controls'))
+				.addToggle(toggle => toggle
+					.setValue(this.plugin.settings.immersive.immersiveShowTypewriterControls)
+					.onChange(async (value) => {
+						this.plugin.settings.immersive.immersiveShowTypewriterControls = value;
+						await this.plugin.saveSettings();
+					}));
 		}
 
-		new Setting(containerEl).setName(t('setting.immersive-dashboard-toggles')).setHeading();
+		type DesktopDashboardBooleanKey =
+			| 'immersiveShowTotalTime'
+			| 'immersiveShowFocusTime'
+			| 'immersiveShowSlackTime'
+			| 'immersiveShowChapterProgress'
+			| 'immersiveShowDailyProgress'
+			| 'immersiveShowTaskProgress'
+			| 'immersiveShowSessionWords'
+			| 'immersiveShowSessionSpeed'
+			| 'immersiveShowCurrentTime';
 
-		new Setting(containerEl)
-			.setName(t('setting.show-typewriter-controls'))
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.immersive.immersiveShowTypewriterControls)
-				.onChange(async (value) => {
-					this.plugin.settings.immersive.immersiveShowTypewriterControls = value;
-					await this.plugin.saveSettings();
-				}));
+		const bindDashboardToggle = (
+			setting: Setting,
+			mobileKey: MobileDashboardStatKey,
+			desktopKey: DesktopDashboardBooleanKey
+		) => {
+			setting.addToggle(toggle => {
+				if (desktop) {
+					toggle
+						.setValue(Boolean(this.plugin.settings.immersive[desktopKey]))
+						.onChange(async (value) => {
+							this.plugin.settings.immersive[desktopKey] = value;
+							await this.plugin.saveSettings();
+						});
+					return;
+				}
 
-		new Setting(containerEl)
-			.setName(t('setting.show-total-time'))
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.immersive.immersiveShowTotalTime)
-				.onChange(async (value) => {
-					this.plugin.settings.immersive.immersiveShowTotalTime = value;
-					await this.plugin.saveSettings();
-				}));
+				const initialSelected = sanitizeMobileDashboardItems(this.plugin.settings.immersive.mobileDashboardItems);
+				toggle
+					.setValue(initialSelected.includes(mobileKey))
+					.onChange(async (value) => {
+						this.plugin.settings.immersive.mobileDashboardItems = toggleMobileDashboardItem(
+							this.plugin.settings.immersive.mobileDashboardItems,
+							mobileKey,
+							value
+						);
+						await this.plugin.saveSettings();
+						this.plugin.immersiveModeManager?.refreshMobileTopBar?.();
+						this.plugin.mobileFloatingStats?.update?.();
+					});
+			});
+		};
 
-		new Setting(containerEl)
-			.setName(t('setting.show-focus-time'))
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.immersive.immersiveShowFocusTime)
-				.onChange(async (value) => {
-					this.plugin.settings.immersive.immersiveShowFocusTime = value;
-					await this.plugin.saveSettings();
-				}));
-
-		new Setting(containerEl)
-			.setName(t('setting.show-slack-time'))
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.immersive.immersiveShowSlackTime)
-				.onChange(async (value) => {
-					this.plugin.settings.immersive.immersiveShowSlackTime = value;
-					await this.plugin.saveSettings();
-				}));
-
-		new Setting(containerEl)
-			.setName(t('setting.show-chapter-progress'))
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.immersive.immersiveShowChapterProgress)
-				.onChange(async (value) => {
-					this.plugin.settings.immersive.immersiveShowChapterProgress = value;
-					await this.plugin.saveSettings();
-				}));
-
-		new Setting(containerEl)
-			.setName(t('setting.show-daily-progress'))
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.immersive.immersiveShowDailyProgress)
-				.onChange(async (value) => {
-					this.plugin.settings.immersive.immersiveShowDailyProgress = value;
-					await this.plugin.saveSettings();
-				}));
-
-		new Setting(containerEl)
-			.setName(t('setting.show-task-progress'))
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.immersive.immersiveShowTaskProgress)
-				.onChange(async (value) => {
-					this.plugin.settings.immersive.immersiveShowTaskProgress = value;
-					await this.plugin.saveSettings();
-				}));
-
-		new Setting(containerEl)
-			.setName(t('setting.show-session-words'))
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.immersive.immersiveShowSessionWords)
-				.onChange(async (value) => {
-					this.plugin.settings.immersive.immersiveShowSessionWords = value;
-					await this.plugin.saveSettings();
-				}));
-
-		new Setting(containerEl)
-			.setName(t('setting.show-session-speed'))
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.immersive.immersiveShowSessionSpeed ?? false)
-				.onChange(async (value) => {
-					this.plugin.settings.immersive.immersiveShowSessionSpeed = value;
-					await this.plugin.saveSettings();
-				}));
-
-		new Setting(containerEl)
-			.setName(t('setting.show-current-time'))
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.immersive.immersiveShowCurrentTime ?? false)
-				.onChange(async (value) => {
-					this.plugin.settings.immersive.immersiveShowCurrentTime = value;
-					await this.plugin.saveSettings();
-				}));
+		bindDashboardToggle(new Setting(containerEl).setName(t('setting.show-total-time')), 'totalTime', 'immersiveShowTotalTime');
+		bindDashboardToggle(new Setting(containerEl).setName(t('setting.show-focus-time')), 'focusTime', 'immersiveShowFocusTime');
+		bindDashboardToggle(new Setting(containerEl).setName(t('setting.show-slack-time')), 'slackTime', 'immersiveShowSlackTime');
+		bindDashboardToggle(new Setting(containerEl).setName(t('setting.show-chapter-progress')), 'chapterProgress', 'immersiveShowChapterProgress');
+		bindDashboardToggle(new Setting(containerEl).setName(t('setting.show-daily-progress')), 'dailyProgress', 'immersiveShowDailyProgress');
+		bindDashboardToggle(new Setting(containerEl).setName(t('setting.show-task-progress')), 'taskProgress', 'immersiveShowTaskProgress');
+		bindDashboardToggle(new Setting(containerEl).setName(t('setting.show-session-words')), 'sessionWords', 'immersiveShowSessionWords');
+		bindDashboardToggle(new Setting(containerEl).setName(t('setting.show-session-speed')), 'sessionSpeed', 'immersiveShowSessionSpeed');
+		bindDashboardToggle(new Setting(containerEl).setName(t('setting.show-current-time')), 'currentTime', 'immersiveShowCurrentTime');
 	}
 
 	// ── 伏笔标注设置 ──

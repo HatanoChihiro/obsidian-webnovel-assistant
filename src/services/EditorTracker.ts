@@ -25,13 +25,13 @@ export class EditorTracker {
 
 	private isMobileImmersiveActive(): boolean {
 		const imm = this.plugin.immersiveModeManager;
-		return Boolean(imm?.isMobileDataIsolationActive?.() ?? imm?.isMobileImmersiveSessionActive?.());
+		return imm?.isMobileDataIsolationActive() ?? false;
 	}
 
 	private resolveTrackedView(): MarkdownView | null {
 		if (this.isMobileImmersiveActive()) {
 			const imm = this.plugin.immersiveModeManager;
-			return imm?.getDataScopedMainView?.() ?? imm?.getActiveSessionMainView?.() ?? null;
+			return imm?.getDataScopedMainView() ?? null;
 		}
 		return this.app.workspace.getActiveViewOfType(MarkdownView);
 	}
@@ -48,7 +48,7 @@ export class EditorTracker {
 					return;
 				}
 			} else {
-				const mainView = imm?.getDataScopedMainView?.() ?? imm?.getActiveSessionMainView?.() ?? null;
+				const mainView = imm?.getDataScopedMainView() ?? null;
 				const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
 				if (!mainView || (activeView && activeView !== mainView)) {
 					return;
@@ -137,7 +137,7 @@ export class EditorTracker {
 	 * 处理文件切换
 	 * 重置字数统计
 	 */
-	async handleFileChange(): Promise<void> {
+	async handleFileChange(showWhileLoading = false): Promise<void> {
 		const reqGen = ++this.fileChangeGeneration;
 		const view = this.resolveTrackedView();
 
@@ -145,17 +145,13 @@ export class EditorTracker {
 		if (view?.file && !this.plugin.cacheManager.isEligibleForWordCount(view.file)) {
 			this.plugin.lastFileWords = 0;
 			this.plugin.lastFilePath = view.file.path;
-			this.updateWordCount();
-			this.plugin.refreshStatusViews();
-			this.plugin.immersiveModeManager?.refreshMobileTopBar?.();
+			this.refreshFileChangeViews();
 			return;
 		}
 
 		if (!view?.file) {
 			// 侧面板或 Modal 获得焦点时没有活动 Markdown Leaf，维持现有追踪基线并通知状态视图刷新。
-			this.updateWordCount();
-			this.plugin.refreshStatusViews();
-			this.plugin.immersiveModeManager?.refreshMobileTopBar?.();
+			this.refreshFileChangeViews();
 			return;
 		}
 
@@ -171,6 +167,7 @@ export class EditorTracker {
 		if (existingCache !== null) {
 			currentWords = existingCache;
 		} else {
+			if (showWhileLoading) this.updateWordCount();
 			// 先捕获当前作品，避免文件尚未读完就被关闭时丢失选择。
 			this.plugin.refreshStatusViews();
 			// 只有在缓存缺失时才去安全地读取实际文件内容（避免 active-leaf-change 瞬间 view.getViewData 数据陈旧）
@@ -227,9 +224,15 @@ export class EditorTracker {
 		this.plugin.lastFileWords = currentWords;
 		this.plugin.lastFilePath = targetPath;
 
+		this.refreshFileChangeViews();
+	}
+
+	private refreshFileChangeViews(): void {
 		this.updateWordCount();
 		this.plugin.refreshStatusViews();
-		this.plugin.immersiveModeManager?.refreshMobileTopBar?.();
+		const imm = this.plugin.immersiveModeManager;
+		if (imm?.isMobileDataIsolationActive()) imm.refreshMobileTopBar();
+		else this.plugin.mobileFloatingStats?.update();
 	}
 
 	/**

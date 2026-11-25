@@ -180,8 +180,7 @@ describe('WorkbenchFilterIndex helpers', () => {
 		index.clear();
 		resolveChapterRead('some keyword content');
 		expect(await filterPromise).toEqual(mode === 'chapter' ? [] : new Set());
-		expect(index['chapterContentCache'].size).toBe(0);
-		expect(index['loreSectionCache'].size).toBe(0);
+		expect(index['cache'].size).toBe(0);
 		expect(index['pendingReads'].size).toBe(0);
 	});
 
@@ -202,7 +201,7 @@ describe('WorkbenchFilterIndex helpers', () => {
 		resolveChapterRead('some keyword content');
 		await filterPromise;
 
-		expect(index['chapterContentCache'].size).toBe(0);
+		expect(index['cache'].size).toBe(0);
 		expect(index['pendingReads'].size).toBe(0);
 	});
 
@@ -218,7 +217,7 @@ describe('WorkbenchFilterIndex helpers', () => {
 		resolveChapterRead('outdated content');
 		await filterPromise;
 
-		expect(index['chapterContentCache'].size).toBe(0);
+		expect(index['cache'].size).toBe(0);
 	});
 
 	it('stops old search after generation change without evaluating remaining files', async () => {
@@ -277,8 +276,7 @@ describe('WorkbenchFilterIndex helpers', () => {
 		const resultList = Array.isArray(results) ? results.map((f: { basename: string }) => f.basename) : Array.from(results as Set<string>);
 		expect(resultList).toEqual(expectedResults as readonly string[]);
 		expect(cachedRead).toHaveBeenCalledTimes(0);
-		expect(index['chapterContentCache'].size).toBe(0);
-		expect(index['loreSectionCache'].size).toBe(0);
+		expect(index['cache'].size).toBe(0);
 	});
 
 	it.each(['chapter', 'lore'] as const)('uses current metadata after a delayed body read (%s)', async mode => {
@@ -367,5 +365,87 @@ describe('WorkbenchFilterIndex helpers', () => {
 		// Empty tokens matches all
 		const result4 = await index.filterLoreEntries(entries, aliases, []);
 		expect(result4.size).toBe(3);
+	});
+
+	it('bounds aggregate memory and entry count across chapter and lore caches', async () => {
+		const cachedRead = vi.fn(async (file: { path: string }) => file.path.endsWith('lore.md') ? '## H1\n' + 'y'.repeat(450_000) : 'x'.repeat(450_000));
+		const index = new WorkbenchFilterIndex({ vault: { cachedRead } } as never);
+		const files = Array.from({ length: 4 }, (_, i) => ({ path: 'f' + i + '.md', basename: 'f' + i, stat: { mtime: 1 } }));
+		await index.filterChapters(files as never, 'target', () => '');
+		const lore = { path: 'lore.md', basename: 'lore', stat: { mtime: 1 } };
+		await index.filterLoreEntries([{ file: lore, heading: 'H1' }] as never, new Map(), 'target');
+		expect(index['retainedUnits']).toBeLessThanOrEqual(2 * 1024 * 1024);
+		expect(index['cache'].has('chapter:f0.md')).toBe(false);
+		expect(index['cache'].has('chapter:f1.md')).toBe(true);
+		expect(index['cache'].has('lore:lore.md')).toBe(true);
+
+		cachedRead.mockResolvedValue('x');
+		const small = Array.from({ length: 300 }, (_, i) => ({ path: 'small' + i + '.md', basename: 'small' + i, stat: { mtime: 1 } }));
+		await index.filterChapters(small as never, 'target', () => '');
+		expect(index['cache'].size).toBe(256);
+		expect(index['retainedUnits']).toBe(256);
+	});
+
+	it('searches oversized file without retaining it in long-term cache', async () => {
+		const bigContent = 'x'.repeat(300_000) + ' keyword ' + 'y'.repeat(300_000);
+		const cachedRead = vi.fn(async () => bigContent);
+		const index = new WorkbenchFilterIndex({ vault: { cachedRead } } as never);
+
+		const file = { path: 'big.md', basename: 'big', stat: { mtime: 1 } } as never;
+		const results = await index.filterChapters([file], 'keyword', () => '');
+		expect(results).toEqual([file]);
+		// Should NOT be stored in cache
+		expect(index['cache'].has('chapter:big.md')).toBe(false);
+		expect(index['retainedUnits']).toBe(0);
+	});
+
+	it('avoids rereading the same oversized lore file per heading during one search', async () => {
+		const bigLore = [
+			'## H1\n' + 'a'.repeat(200_000),
+			'## H2\n' + 'b'.repeat(200_000),
+			'## H3\n' + 'c'.repeat(200_000)
+		].join('\n');
+		const cachedRead = vi.fn(async () => bigLore);
+		const index = new WorkbenchFilterIndex({ vault: { cachedRead } } as never);
+
+		const file = { path: 'big-lore.md', basename: 'big-lore', stat: { mtime: 1 } } as never;
+		const entries = [
+			{ file, heading: 'H1' },
+			{ file, heading: 'H2' },
+			{ file, heading: 'H3' }
+		] as never[];
+
+		const matched = await index.filterLoreEntries(entries, new Map(), ['target']);
+		expect(matched.size).toBe(0);
+		// Must only read the file once across all 3 headings in that single search!
+		expect(cachedRead).toHaveBeenCalledTimes(1);
+		// And after search ends, it is not retained in long-term cache
+		expect(index['cache'].has('lore:big-lore.md')).toBe(false);
+	});
+
+	it('cancels search early and updates budget on invalidation', async () => {
+		const cachedRead = vi.fn(async (file: { path: string }) => file.path + ' content');
+		const index = new WorkbenchFilterIndex({ vault: { cachedRead } } as never);
+		const files = [
+			{ path: 'f1.md', basename: 'f1', stat: { mtime: 1 } },
+			{ path: 'f2.md', basename: 'f2', stat: { mtime: 1 } }
+		] as never[];
+
+		await index.filterChapters(files, 'content', () => '');
+		const unitsBefore = index['retainedUnits'];
+		expect(unitsBefore).toBeGreaterThan(0);
+		expect(index['cache'].size).toBe(2);
+
+		index.invalidate('f1.md');
+		expect(index['cache'].size).toBe(1);
+		expect(index['retainedUnits']).toBeLessThan(unitsBefore);
+
+		// Early cancellation via isCancelled
+		cachedRead.mockClear();
+		let cancelled = false;
+		const searchPromise = index.filterChapters(files, 'content', () => '', undefined, () => cancelled);
+		cancelled = true;
+		const res = await searchPromise;
+		expect(res).toEqual([]);
 	});
 });

@@ -255,6 +255,11 @@
 	transition: opacity 0.15s ease, color 0.15s ease;
 }
 
+.wn-timeline-time.is-time-pending {
+	color: var(--text-muted);
+	font-style: italic;
+}
+
 .wn-timeline-time:hover {
 	text-decoration: underline;
 	opacity: 0.85;

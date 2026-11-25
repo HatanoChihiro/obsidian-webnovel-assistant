@@ -93,6 +93,12 @@ export class GraphInteractionController {
 
 	public updateLayout(layout: GraphData) {
 		this.layout = layout;
+		if (this.draggedNode && !layout.nodes.includes(this.draggedNode)) {
+			this.draggedNode = null;
+		}
+		if (this.lastClickedNode && !layout.nodes.includes(this.lastClickedNode)) {
+			this.lastClickedNode = null;
+		}
 	}
 
 	public getState(): GraphRenderState {

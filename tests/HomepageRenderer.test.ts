@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import moment from 'moment';
 import { MockElement } from './mocks/MockElement';
-import { HomepageRenderer, type HomepageRendererPlugin } from '../src/ui/components/HomepageRenderer';
+import { HomepageRenderChild, HomepageRenderer, type HomepageRendererPlugin } from '../src/ui/components/HomepageRenderer';
 import { DailyStatsModal } from '../src/ui/DailyStatsModal';
 import type { NovelFolderInfo } from '../src/types/homepage';
 
@@ -25,6 +25,7 @@ describe('HomepageRenderer render-cycle data loading', () => {
 
 		const container = {
 			clientWidth: 1200,
+			classList: { toggle: vi.fn() },
 			empty: vi.fn(),
 			createDiv: vi.fn(function (this: HTMLElement) { return this; }),
 			addClass: vi.fn(),
@@ -209,5 +210,63 @@ describe('HomepageRenderer daily stats triggers', () => {
 		expect(openSpy).toHaveBeenCalledTimes(2);
 
 		openSpy.mockRestore();
+	});
+});
+
+describe('HomepageRenderChild observer lifecycle', () => {
+	function createRenderChild() {
+		const renderer = new HomepageRenderer({} as never, {} as never);
+		const observe = vi.fn();
+		const disconnect = vi.fn();
+		const observerCreated = vi.fn();
+		const container = {
+			clientWidth: 1200,
+			classList: { add: vi.fn(), remove: vi.fn(), toggle: vi.fn() },
+			empty: vi.fn(),
+			createDiv: vi.fn(() => container),
+			closest: vi.fn().mockReturnValue(null),
+			isConnected: true,
+			ownerDocument: { defaultView: { ResizeObserver: class {
+				observe = observe;
+				disconnect = disconnect;
+				constructor() { observerCreated(); }
+			} } }
+		};
+		let resumeWelcome!: () => void;
+		const welcome = new Promise<void>(resolve => { resumeWelcome = resolve; });
+		vi.spyOn(renderer, 'renderWelcome').mockReturnValueOnce(welcome).mockResolvedValue(undefined);
+		const ongoing = vi.spyOn(renderer, 'renderOngoing').mockResolvedValue(undefined);
+		vi.spyOn(renderer, 'renderDrafting').mockResolvedValue(undefined);
+		vi.spyOn(renderer, 'renderPaused').mockResolvedValue(undefined);
+		vi.spyOn(renderer, 'renderCompleted').mockResolvedValue(undefined);
+		vi.spyOn(renderer, 'renderStatsSummary').mockResolvedValue(undefined);
+		vi.spyOn(renderer, 'renderHeatmap').mockReturnValue(undefined);
+		vi.spyOn(renderer, 'renderBarChart').mockReturnValue(undefined);
+		const onDispose = vi.fn();
+		const child = new HomepageRenderChild(container as unknown as HTMLElement, renderer, onDispose);
+		return { child, resumeWelcome, ongoing, observe, disconnect, observerCreated, onDispose, container };
+	}
+
+	it('does not continue rendering or observe a connected root after its child unloads', async () => {
+		const { child, resumeWelcome, ongoing, observerCreated, onDispose } = createRenderChild();
+		const pending = child.render();
+		child.onunload();
+		resumeWelcome();
+		await pending;
+		expect(observerCreated).not.toHaveBeenCalled();
+		expect(ongoing).not.toHaveBeenCalled();
+		expect(onDispose).toHaveBeenCalledOnce();
+	});
+
+	it('only observes the latest render and disconnects it on unload', async () => {
+		const { child, resumeWelcome, observe, disconnect, observerCreated, container } = createRenderChild();
+		const pending = child.render();
+		await child.render();
+		resumeWelcome();
+		await pending;
+		expect(observe).toHaveBeenCalledWith(container);
+		expect(observerCreated).toHaveBeenCalledOnce();
+		child.onunload();
+		expect(disconnect).toHaveBeenCalledOnce();
 	});
 });

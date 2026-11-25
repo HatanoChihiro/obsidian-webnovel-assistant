@@ -1,5 +1,5 @@
 import { showPluginNotice } from './PluginNoticeService';
-import type { App, TAbstractFile } from 'obsidian';
+import type { App, TAbstractFile, Vault } from 'obsidian';
 import { TFile, TFolder, type MarkdownView, normalizePath, parseYaml } from 'obsidian';
 import type { WebNovelAssistantPlugin, SeriesLoreRenameResult } from '../types/plugin';
 import { getDefaultFileName, getDefaultFileNameCandidates, getLoreLabel } from '../i18n/data-keys';
@@ -61,6 +61,22 @@ export interface UpdateLoreInput {
 	relations: LoreRelationItem[];
 	contextBookPath?: string;
 	expectedSnapshot?: LoreSnapshot;
+}
+
+export async function collectExistingLoreTypes(vault: Pick<Vault, 'cachedRead'>, files: readonly TFile[]): Promise<string[]> {
+	const types = new Set<string>();
+	for (const file of files) {
+		try {
+			const content = await vault.cachedRead(file);
+			for (const match of content.matchAll(/^(?:\*\*|__)?(?:类型|類型|Type)(?:\*\*|__)?[ \t]*[:：]([^\r\n]*)/gim)) {
+				const type = match[1].trim();
+				if (type) types.add(type);
+			}
+		} catch {
+			// A category that cannot be read does not prevent using other types.
+		}
+	}
+	return Array.from(types);
 }
 
 /**
@@ -159,6 +175,7 @@ export class CharacterManager {
 	 * 全量重建设定缓存
 	 */
 	public async rebuildCache(): Promise<void> {
+		if (this.plugin.isUnloading) return;
 		this.bookToSeriesMap.clear();
 
 		const knownBooks = new Set<string>();
@@ -168,9 +185,19 @@ export class CharacterManager {
 				if (normWf) knownBooks.add(normWf);
 			}
 		}
+
+		const candidateFolders: TFolder[] = [];
+		const onFolder = (folder: TFolder) => {
+			candidateFolders.push(folder);
+		};
+
+		const allMarkdownFiles: TFile[] = (this.plugin.settings.workspaceFolders && this.plugin.settings.workspaceFolders.length > 0)
+			? this.plugin.getTrackedMarkdownFiles(true, onFolder)
+			: this.plugin.getVaultMarkdownFiles(onFolder);
+
 		if (this.plugin.homepageManager) {
 			try {
-				const folders = this.plugin.homepageManager.getNovelFolders();
+				const folders = this.plugin.homepageManager.getNovelFolders(candidateFolders);
 				for (const f of folders) {
 					const normF = (!f.folderPath || f.folderPath === '/') ? '/' : f.folderPath.replace(/^\/+|\/+$/g, '');
 					if (normF) knownBooks.add(normF);
@@ -180,43 +207,41 @@ export class CharacterManager {
 			}
 		}
 
-		for (const bp of knownBooks) {
-			const series = await this.getNovelSeries(bp);
-			this.bookToSeriesMap.set(bp, series);
-		}
-		const newFileContributions = new Map<string, Map<string, Array<{ key: string; entry: LoreEntry }>>>();
-		const newFileToBookMap = new Map<string, string>();
-		
-		const allMarkdownFiles: TFile[] = (this.plugin.settings.workspaceFolders && this.plugin.settings.workspaceFolders.length > 0)
-			? this.plugin.getTrackedMarkdownFiles(true)
-			: this.plugin.getVaultMarkdownFiles();
-
-		const files = allMarkdownFiles.filter(file => {
+		const loreCandidates: Array<{ file: TFile; path: string; bookPath: string }> = [];
+		const booksByParent = new Map<string, string | null>();
+		for (const file of allMarkdownFiles) {
 			try {
 				const parentPath = file.parent?.path || '';
-				const bookPath = this.getBookPathForFile(file);
-				if (!bookPath) return false;
+				let bookPath = booksByParent.get(parentPath);
+				if (bookPath === undefined) {
+					bookPath = this.getBookPathForFile(file);
+					booksByParent.set(parentPath, bookPath);
+				}
+				if (!bookPath) continue;
 				knownBooks.add(bookPath);
-				return this.isLorePath(bookPath, parentPath);
+				if (this.isLorePath(bookPath, parentPath)) {
+					loreCandidates.push({ file, path: file.path, bookPath });
+				}
 			} catch {
-				return false;
+				// ignore
 			}
-		});
+		}
 
 		for (const bp of knownBooks) {
 			if (!this.bookToSeriesMap.has(bp)) {
 				const series = await this.getNovelSeries(bp);
+				if (this.plugin.isUnloading) return;
 				this.bookToSeriesMap.set(bp, series);
 			}
 		}
 
 		if (this.unmigratedSeriesLoreCandidates.size > 0) {
-			const loreCandidates = this.getLoreCandidates();
+			const loreCandidatesNames = this.getLoreCandidates();
 			for (const unmigrated of [...this.unmigratedSeriesLoreCandidates]) {
 				let stillExists = false;
 				for (const bookPath of this.bookToSeriesMap.keys()) {
 					const norm = (!bookPath || bookPath === '/') ? '' : bookPath.replace(/^\/+|\/+$/g, '');
-					for (const loreName of loreCandidates) {
+					for (const loreName of loreCandidatesNames) {
 						const oldPath = norm ? `${norm}/${loreName}/${unmigrated}` : `${loreName}/${unmigrated}`;
 						const folder = this.app.vault.getAbstractFileByPath(oldPath);
 						if (folder instanceof TFolder && folder.children.length > 0) {
@@ -232,30 +257,40 @@ export class CharacterManager {
 			}
 		}
 
-		const parsedResults = await Promise.all(files.map(async (file) => {
-			try {
-				const parentPath = file.parent?.path || '';
-				const bookPath = this.getBookPathForFile(file);
-				if (!bookPath || !this.isLorePath(bookPath, parentPath)) return null;
+		const BATCH_SIZE = 8;
+		const newFileContributions = new Map<string, Map<string, Array<{ key: string; entry: LoreEntry }>>>();
+		const newFileToBookMap = new Map<string, string>();
 
-				const entries = await this.parseLoreFile(file);
-				return { file, bookPath, entries };
-			} catch (err) {
-				console.error(`[CharacterManager] 解析设定文件 ${file.path} 失败:`, err);
-				return null;
+		for (let i = 0; i < loreCandidates.length; i += BATCH_SIZE) {
+			if (this.plugin.isUnloading) return;
+			const batch = loreCandidates.slice(i, i + BATCH_SIZE);
+			const results = await Promise.all(batch.map(async ({ file, path, bookPath }) => {
+				if (file.path !== path) return null;
+				try {
+					const entries = await this.parseLoreFile(file);
+					return { file, path, bookPath, entries };
+				} catch (err) {
+					console.error(`[CharacterManager] 解析设定文件 ${path} 失败:`, err);
+					return null;
+				}
+			}));
+			if (this.plugin.isUnloading) return;
+			for (const result of results) {
+				if (!result || result.file.path !== result.path) continue;
+				const { path, bookPath, entries } = result;
+				let contributions = newFileContributions.get(bookPath);
+				if (!contributions) {
+					contributions = new Map();
+					newFileContributions.set(bookPath, contributions);
+				}
+				contributions.set(path, entries);
+				newFileToBookMap.set(path, bookPath);
 			}
-		}));
-
-		for (const result of parsedResults) {
-			if (!result) continue;
-			const { file, bookPath, entries } = result;
-			if (!newFileContributions.has(bookPath)) {
-				newFileContributions.set(bookPath, new Map());
+			if (i + BATCH_SIZE < loreCandidates.length) {
+				await new Promise<void>(resolve => window.setTimeout(resolve, 0));
 			}
-			newFileContributions.get(bookPath)!.set(file.path, entries);
-			newFileToBookMap.set(file.path, bookPath);
 		}
-		
+
 		this.fileContributions = newFileContributions;
 		this.fileToBookMap = newFileToBookMap;
 

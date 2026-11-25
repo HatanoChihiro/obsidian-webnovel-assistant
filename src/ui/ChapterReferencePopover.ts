@@ -1,9 +1,16 @@
 import { Component, type App } from 'obsidian';
-import type { ChapterReferenceItem } from '../types/reference';
+import type { ChapterReferenceItem, ForeshadowingReferenceTarget } from '../types/reference';
 import { t } from '../i18n';
 import { getForeshadowingStatusText } from '../i18n/data-keys';
 import { isMobile } from '../utils/platform';
 import { smartLocateAndHighlight } from '../utils/leaf';
+import { createCardImportanceButton } from './components/CardImportanceButton';
+
+export interface ChapterReferencePopoverOptions {
+	onToggleImportance?: (item: ChapterReferenceItem, important: boolean) => Promise<void>;
+	onImportanceWriteStart?: () => void;
+	onImportanceWriteEnd?: (succeeded: boolean) => void;
+}
 
 export class ChapterReferencePopover extends Component {
 	private static instances = new WeakMap<Document, ChapterReferencePopover>();
@@ -17,7 +24,7 @@ export class ChapterReferencePopover extends Component {
 	private disposed = false;
 
 	constructor(private target: HTMLElement, private items: ChapterReferenceItem[], private app: App,
-		immediate = false, private onHide?: () => void) {
+		immediate = false, private onHide?: () => void, private options?: ChapterReferencePopoverOptions) {
 		super();
 		this.ownerDocument = target.ownerDocument;
 		this.ownerWindow = this.ownerDocument.defaultView!;
@@ -62,7 +69,14 @@ export class ChapterReferencePopover extends Component {
 		this.registerDomEvent(element, 'mouseenter', () => this.cancelClose());
 		this.registerDomEvent(element, 'mouseleave', () => this.scheduleClose());
 		const list = element.createDiv({ cls: 'wn-reference-popover-list' });
+		const recordBindings = new Map<string | ForeshadowingReferenceTarget, {
+			important: boolean;
+			saving: boolean;
+			buttons: Array<(important: boolean) => void>;
+		}>();
+		const onToggleImportance = this.options?.onToggleImportance;
 		for (const item of this.items) {
+			const recordKey = item.type === 'foreshadowing' ? item.foreshadowingTarget : (item.timelineTarget && item.id);
 			const card = list.createDiv({ cls: 'wn-reference-popover-item is-' + item.type });
 			const header = card.createDiv({ cls: 'wn-reference-item-header' });
 			header.createSpan({ cls: 'wn-reference-tag', text: t(item.type === 'timeline' ? 'reference.timeline-category' : 'reference.foreshadowing-category') });
@@ -71,6 +85,37 @@ export class ChapterReferencePopover extends Component {
 			if (item.type === 'foreshadowing') {
 				header.createSpan({ cls: 'wn-reference-kind', text: t(item.kind === 'creation' ? 'reference.planted-quote' : 'reference.recovered-quote') });
 				header.createSpan({ cls: 'wn-reference-status', text: getForeshadowingStatusText(item.status) });
+			}
+			if (onToggleImportance && recordKey) {
+				const group = recordBindings.get(recordKey) ?? { important: Boolean(item.important), saving: false, buttons: [] };
+				recordBindings.set(recordKey, group);
+
+				createCardImportanceButton({
+					container: header,
+					isImportant: group.important,
+					cardEl: card,
+					canToggle: () => !group.saving,
+					onSyncReady: (sync) => { group.buttons.push(sync); },
+					onToggle: async (newImportant) => {
+						group.saving = true;
+						for (const sync of group.buttons) sync(newImportant);
+						this.options?.onImportanceWriteStart?.();
+						let succeeded = false;
+						try {
+							await onToggleImportance(item, newImportant);
+							group.important = newImportant;
+							succeeded = true;
+						} catch (error) {
+							for (const sync of group.buttons) sync(group.important);
+							throw error;
+						} finally {
+							group.saving = false;
+							this.options?.onImportanceWriteEnd?.(succeeded);
+						}
+					}
+				});
+			} else if (item.important) {
+				card.addClass('is-important', 'wn-card-is-important');
 			}
 			if (item.description) card.createDiv({ cls: 'wn-reference-desc', text: item.description });
 			if (item.type === 'foreshadowing' && item.note) card.createDiv({ cls: 'wn-reference-note', text: item.note });

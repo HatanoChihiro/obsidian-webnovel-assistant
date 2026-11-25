@@ -5,6 +5,7 @@ import type { WebNovelAssistantPlugin } from '../types/plugin';
 import type { NovelMetadata, NovelFolderInfo } from '../types/homepage';
 import { NOVEL_INFO_LABEL_MAP, NOVEL_STATUS_MAP, getNovelInfoLabel, getNovelStatusText, getDefaultFileName, getDefaultFileNameCandidates } from '../i18n/data-keys';
 import { t } from '../i18n';
+import type { HomepageRenderChild } from '../ui/components/HomepageRenderer';
 
 const DEFAULT_NOVEL_META: NovelMetadata = {
 	name: '',
@@ -24,6 +25,7 @@ const DEFAULT_NOVEL_META: NovelMetadata = {
 export class HomepageManager {
 	private app: App;
 	private plugin: WebNovelAssistantPlugin;
+	private readonly renderChildren = new Map<HTMLElement, HomepageRenderChild>();
 	private metadataCache = new Map<string, NovelMetadata>();
 	private activeRefreshPromise: Promise<void> | null = null;
 	private pendingMembershipFolders = new Set<string>();
@@ -289,15 +291,16 @@ export class HomepageManager {
 		].join('\n');
 	}
 
-	getNovelFolders(): NovelFolderInfo[] {
+	getNovelFolders(candidateFolders?: Iterable<TFolder>): NovelFolderInfo[] {
 		const folders: NovelFolderInfo[] = [];
 		const seenPaths = new Set<string>();
 		const workspaceFolders = this.plugin.settings.workspaceFolders;
 
 		const checkAndAddFolder = (folder: TFolder) => {
 			if (folder.isRoot()) return;
+			const name = folder.name;
 			// 排除以 _ 或 . 开头的辅助文件夹
-			if (folder.name.startsWith('_') || folder.name.startsWith('.')) return;
+			if (name.startsWith('_') || name.startsWith('.')) return;
 			if (seenPaths.has(folder.path)) return;
 
 			// 仅加载包含作品信息文件的目录（支持多语言文件名查找）
@@ -305,17 +308,24 @@ export class HomepageManager {
 				seenPaths.add(folder.path);
 				folders.push({
 					folderPath: folder.path,
-					folderName: folder.name,
+					folderName: name,
 					metadata: null,
 					wordCount: this.plugin.cacheManager?.getFolderWordCount(folder.path) || 0,
 				});
 			}
 		};
 
+		if (candidateFolders) {
+			for (const folder of candidateFolders) {
+				checkAndAddFolder(folder);
+			}
+			return folders;
+		}
+
 		if (workspaceFolders && workspaceFolders.length > 0) {
 			for (const folderPath of workspaceFolders) {
 				const normalized = folderPath.replace(/^\/+|\/+$/g, '');
-				const abstractFile = this.app.vault.getAbstractFileByPath(normalized);
+				const abstractFile = normalized ? this.app.vault.getAbstractFileByPath(normalized) : this.app.vault.getRoot();
 				if (abstractFile instanceof TFolder) {
 					checkAndAddFolder(abstractFile);
 					Vault.recurseChildren(abstractFile, (child) => {
@@ -371,7 +381,7 @@ export class HomepageManager {
 			const normalized = folderObj.path.replace(/^\/+|\/+$/g, '');
 			const inScope = workspaceFolders.some(ws => {
 				const normWs = ws.replace(/^\/+|\/+$/g, '');
-				return normWs && (normalized === normWs || normalized.startsWith(normWs + '/'));
+				return !normWs || normalized === normWs || normalized.startsWith(normWs + '/');
 			});
 			if (!inScope) {
 				return false;
@@ -645,44 +655,41 @@ export class HomepageManager {
 		}
 	}
 
-	refreshHomepageViews(): Promise<void> {
-		const homepagePath = this.getHomepageFilePath();
+	registerRenderChild(child: HomepageRenderChild): void {
+		this.renderChildren.get(child.containerEl)?.dispose();
+		this.renderChildren.set(child.containerEl, child);
+	}
 
-		return import('../ui/components/HomepageRenderer.js').then(async ({ HomepageRenderer }) => {
-			const renderer = new HomepageRenderer(this.app, this.plugin);
-			const promises: Promise<void>[] = [];
-			this.app.workspace.iterateAllLeaves(leaf => {
-				const view = leaf.view;
-				if (view && view.getViewType() === 'markdown') {
-					const mdView = view as MarkdownView;
-					if (mdView?.file?.path === homepagePath && mdView?.previewMode) {
-						const rootEl = mdView.containerEl.querySelector<HTMLElement>('.webnovel-homepage-root');
-						if (rootEl) {
-							promises.push(
-								renderer.renderHomepage(rootEl).catch(err => {
-									Logger.error('[HomepageManager] renderHomepage failed, fallback to rerender:', err);
-									mdView.previewMode.rerender(true);
-								})
-							);
-						} else {
-							mdView.previewMode.rerender(true);
-						}
-					}
-				}
-			});
-			await Promise.all(promises);
-		}).catch(err => {
-			Logger.error('[HomepageManager] Failed to import HomepageRenderer, fallback to rerender all:', err);
-			this.app.workspace.iterateAllLeaves(leaf => {
-				const view = leaf.view;
-				if (view && view.getViewType() === 'markdown') {
-					const mdView = view as MarkdownView;
-					if (mdView?.file?.path === homepagePath && mdView?.previewMode) {
+	unregisterRenderChild(child: HomepageRenderChild): void {
+		if (this.renderChildren.get(child.containerEl) === child) this.renderChildren.delete(child.containerEl);
+	}
+
+	async refreshHomepageViews(): Promise<void> {
+		if (this.plugin.isUnloading) return;
+		const homepagePath = this.getHomepageFilePath();
+		const renders: Promise<void>[] = [];
+		this.app.workspace.iterateAllLeaves(leaf => {
+			const view = leaf.view;
+			if (view?.getViewType() !== 'markdown') return;
+			const mdView = view as MarkdownView;
+			if (mdView.file?.path !== homepagePath || !mdView.previewMode) return;
+			const roots = mdView.containerEl.querySelectorAll<HTMLElement>('.webnovel-homepage-root');
+			const children = Array.from(roots, root => this.renderChildren.get(root));
+			if (children.length === 0 || children.some(child => !child)) {
+				mdView.previewMode.rerender(true);
+				return;
+			}
+			for (const child of children) {
+				if (!child) continue;
+				renders.push(child.render().catch(error => {
+					Logger.error('[HomepageManager] renderHomepage failed:', error);
+					if (!this.plugin.isUnloading && this.renderChildren.get(child.containerEl) === child && mdView.file?.path === homepagePath) {
 						mdView.previewMode.rerender(true);
 					}
-				}
-			});
+				}));
+			}
 		});
+		await Promise.all(renders);
 	}
 
 	private _leafOriginalStates = new WeakMap<object, Record<string, unknown>>();
@@ -754,6 +761,8 @@ export class HomepageManager {
 	}
 
 	public cleanup(): void {
+		for (const child of this.renderChildren.values()) child.dispose();
+		this.renderChildren.clear();
 		if (this._homepageTimer !== null) {
 			window.clearTimeout(this._homepageTimer);
 			this._homepageTimer = null;

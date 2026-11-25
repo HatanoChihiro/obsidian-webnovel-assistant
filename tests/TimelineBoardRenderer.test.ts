@@ -191,10 +191,11 @@ class MockElement {
 		return child;
 	}
 
-	createEl(tag: string, opts?: { cls?: string; text?: string }) {
+	createEl(tag: string, opts?: { cls?: string; text?: string; attr?: Record<string, string> }) {
 		const cls = opts?.cls || '';
 		const child = new MockElement(cls);
 		if (opts?.text) child.textContent = opts.text;
+		for (const [key, value] of Object.entries(opts?.attr ?? {})) child.setAttribute(key, value);
 		this.appendChild(child);
 		return child;
 	}
@@ -267,21 +268,56 @@ class MockElement {
 	}
 
 	mockIsPhone = false;
-	get ownerDocument() {
-		return {
-			createElementNS: (_ns: string, tag: string) => new MockElement(tag),
-			createDocumentFragment: () => new MockElement('fragment'),
-			defaultView: mockOwnerWindow,
-			createRange: () => ({
-				selectNodeContents: vi.fn(),
-				collapse: vi.fn()
-			}),
-			body: {
-				classList: {
-					contains: (token: string) => token === 'is-phone' ? this.mockIsPhone : false
+	mockIsTablet = false;
+	mockRect = { top: 0, bottom: 100, height: 100, left: 0, right: 100, width: 100 };
+	getBoundingClientRect() {
+		return this.mockRect;
+	}
+	private _ownerDocument: {
+		createElementNS: (_ns: string, tag: string) => MockElement;
+		createDocumentFragment: () => MockElement;
+		defaultView: typeof mockOwnerWindow;
+		createRange: () => { selectNodeContents: ReturnType<typeof vi.fn>; collapse: ReturnType<typeof vi.fn> };
+		body: { classList: { contains: (token: string) => boolean } };
+		addEventListener: (event: string, fn: (e?: unknown) => void) => void;
+		removeEventListener: (event: string, fn: (e?: unknown) => void) => void;
+		dispatchEvent: (event: string, e?: unknown) => void;
+	} | null = null;
+	get ownerDocument(): NonNullable<MockElement['_ownerDocument']> {
+		if (this.parentElement) {
+			return this.parentElement.ownerDocument;
+		}
+		if (!this._ownerDocument) {
+			const listeners = new Map<string, Array<(e?: unknown) => void>>();
+			this._ownerDocument = {
+				createElementNS: (_ns: string, tag: string) => new MockElement(tag),
+				createDocumentFragment: () => new MockElement('fragment'),
+				defaultView: mockOwnerWindow,
+				createRange: () => ({
+					selectNodeContents: vi.fn(),
+					collapse: vi.fn()
+				}),
+				body: {
+					classList: {
+						contains: (token: string) => token === 'is-phone' ? this.mockIsPhone : token === 'is-tablet' && this.mockIsTablet
+					}
+				},
+				addEventListener: (event: string, fn: (e?: unknown) => void) => {
+					const arr = listeners.get(event) ?? [];
+					arr.push(fn);
+					listeners.set(event, arr);
+				},
+				removeEventListener: (event: string, fn: (e?: unknown) => void) => {
+					const arr = listeners.get(event);
+					if (arr) listeners.set(event, arr.filter(l => l !== fn));
+				},
+				dispatchEvent: (event: string, e?: unknown) => {
+					const arr = [...(listeners.get(event) ?? [])];
+					for (const fn of arr) fn(e);
 				}
-			}
-		};
+			};
+		}
+		return this._ownerDocument;
 	}
 }
 
@@ -442,7 +478,11 @@ describe('TimelineBoardRenderer', () => {
 			onToggleUnscheduledSort: toggleSpy
 		};
 
+		vi.mocked(CorkboardGridRenderer.render).mockImplementationOnce(({ container: grid }) => {
+			grid.createDiv('wn-corkboard-volume-header');
+		});
 		await TimelineBoardRenderer.render(options);
+		expect(container.querySelector('.wn-timeline-unscheduled-list')?.hasClass('is-volume-first')).toBe(true);
 
 		// Find the sort toggle in the unscheduled header
 		const sortToggle = container.querySelector('.wn-workbench-sort-toggle');
@@ -525,7 +565,8 @@ describe('TimelineBoardRenderer', () => {
 		);
 	});
 
-	it('should render collapse button with chevron-right, expand handle with chevron-left, and keep independent click/keyboard wiring', async () => {
+	it.each(['desktop', 'tablet'])('uses the same side controls and keyboard wiring on %s', async (platform) => {
+		container.mockIsTablet = platform === 'tablet';
 		const v1c1 = createMockFile('第1章.md', 'NovelA/第一卷/第1章.md');
 		const toggleCollapseSpy = vi.fn();
 		const toggleSortSpy = vi.fn();
@@ -675,39 +716,43 @@ describe('TimelineBoardRenderer', () => {
 		expect(sideCol?.hasClass('is-collapsed')).toBe(false);
 	});
 
-	it('should preserve phone appearance and keep help-circle without desktop collapse controls when in phone mode', async () => {
-		(container as unknown as MockElement).mockIsPhone = true;
-
-		const v1c1 = createMockFile('第1章.md', 'NovelA/第一卷/第1章.md');
-
+	it.each([true, false])('uses a phone drawer toggle with visible chapters=%s', async (hasChapters) => {
+		container.mockIsPhone = true;
+		const toggleCollapse = vi.fn();
 		const options: TimelineBoardOptions = {
 			app: mockApp,
 			plugin: mockPlugin,
 			container: container as unknown as HTMLElement,
-			files: [v1c1],
+			files: hasChapters ? [createMockFile('Chapter 1.md', 'Example/Volume 1/Chapter 1.md')] : [],
 			foreshadowingMap: new Map(),
-			currentBookPath: 'NovelA',
-			currentTimelineFilter: [],
+			currentBookPath: 'Example',
+			loadedEntries: [],
+			loadedPendingEvents: [],
 			onSaveStateChange: vi.fn(),
 			reloadBoard: vi.fn(),
 			getChapterEvents: vi.fn().mockReturnValue([]),
-			isSidebarCollapsed: true
+			onToggleSidebarCollapse: toggleCollapse
 		};
 
 		await TimelineBoardRenderer.render(options);
+		const header = container.querySelector(hasChapters ? '.wn-timeline-unscheduled-header' : '.wn-timeline-pending-header');
+		const collapse = header?.querySelector('.wn-timeline-sidebar-collapse-btn');
+		expect(collapse?.getAttribute('data-icon')).toBe('chevron-down');
+		expect(collapse?.getAttribute('aria-label')).toBe('corkboard.collapse-sidebar');
+		expect(collapse?.getAttribute('aria-expanded')).toBe('true');
+		collapse?.click();
+		expect(toggleCollapse).toHaveBeenCalledTimes(1);
 
-		// Phone mode keeps help-circle iconSpan instead of desktop collapse button
-		expect(container.querySelector('.wn-timeline-sidebar-collapse-btn')).toBeNull();
-		expect(container.querySelector('.wn-timeline-sidebar-expand-handle')).toBeNull();
-
-		const helpCircle = container.querySelector('.wn-timeline-sidebar-icon');
-		expect(helpCircle).not.toBeNull();
-		expect(helpCircle?.getAttribute('data-icon')).toBe('help-circle');
-		expect(setIcon).toHaveBeenCalledWith(helpCircle, 'help-circle');
-
-		// Mobile drawer is not given desktop is-collapsed class
-		const sideCol = container.querySelector('.wn-timeline-waterfall-sidebar');
-		expect(sideCol?.hasClass('is-collapsed')).toBe(false);
+		container.empty();
+		await TimelineBoardRenderer.render({ ...options, isSidebarCollapsed: true });
+		expect(container.querySelector('.wn-timeline-waterfall-sidebar')?.hasClass('is-collapsed')).toBe(true);
+		expect(container.querySelector('.wn-timeline-waterfall-layout')?.hasClass('is-sidebar-collapsed')).toBe(true);
+		const expand = container.querySelector('.wn-timeline-sidebar-expand-handle');
+		expect(expand?.getAttribute('data-icon')).toBe('chevron-up');
+		expect(expand?.getAttribute('aria-label')).toBe('corkboard.expand-sidebar');
+		expect(expand?.getAttribute('aria-expanded')).toBe('false');
+		expand?.dispatchEvent('keydown', { key: 'Enter', preventDefault: vi.fn(), stopPropagation: vi.fn() });
+		expect(toggleCollapse).toHaveBeenCalledTimes(2);
 	});
 
 	it('should maintain same-node description element as sole scroll owner without creating nested textarea during event inline edit', async () => {
@@ -756,102 +801,69 @@ describe('TimelineBoardRenderer', () => {
 		expect(descEl.style.minHeight ?? '').toBe('');
 	});
 
-	it('should create same-node contenteditable editor for new sub-event with Enter-save, Shift+Enter newline, and IME composition safety', async () => {
-		const updateEntrySpy = vi.fn().mockResolvedValue(undefined);
-		const reloadBoardSpy = vi.fn();
+	it('uses the timeline card controls for pending events and preserves importance when placed by drag', async () => {
+		const placeIntoSpy = vi.fn().mockResolvedValue('updated');
+		const updatePendingSpy = vi.fn().mockResolvedValue('updated');
+		const entry: TimelineEntry = {
+			time: '第一年',
+			type: '主线',
+			description: '初始事件描述',
+			chapter: '',
+			rawBlock: '',
+			items: [{ description: '初始事件描述', chapter: '' }]
+		};
 
-		const options: TimelineBoardOptions = {
+		await TimelineBoardRenderer.render({
 			app: mockApp,
 			plugin: {
 				...mockPlugin,
 				timelineManager: {
 					...mockPlugin.timelineManager,
-					loadEntries: vi.fn().mockResolvedValue([
-						{ time: '第一年', type: '主线', description: '初始事件描述', items: [{ description: '初始事件描述', chapter: '' }] }
-					]),
-					updateEntry: updateEntrySpy
+					placePendingEventIntoNode: placeIntoSpy,
+					updatePendingEvent: updatePendingSpy
 				}
-			},
+			} as unknown as TimelineBoardPlugin,
 			container: container as unknown as HTMLElement,
 			files: [],
 			foreshadowingMap: new Map(),
 			currentBookPath: 'NovelA',
-			currentTimelineFilter: [],
+			loadedEntries: [entry],
+			loadedPendingEvents: [{ id: 'pe_place', description: '待排放置事件', chapter: '' }],
 			onSaveStateChange: vi.fn(),
-			reloadBoard: reloadBoardSpy,
+			reloadBoard: vi.fn(),
 			getChapterEvents: vi.fn().mockReturnValue([])
-		};
+		});
 
-		await TimelineBoardRenderer.render(options);
+		const card = container.querySelector('.wn-timeline-pending-card')!;
+		expect(card.querySelector('.wn-timeline-item-desc')).not.toBeNull();
+		expect(card.querySelector('.wn-timeline-pending-place-btn')).toBeNull();
+		expect(card.querySelector('.wn-timeline-item-delete-btn')?.getAttribute('aria-label')).toBe('common.delete');
+		expect(card.querySelector('.wn-timeline-item-delete-btn')?.getAttribute('data-icon')).toBe('trash');
+		const star = card.querySelector('.wn-card-importance-btn')!;
+		star.click();
+		await vi.waitFor(() => expect(updatePendingSpy).toHaveBeenCalledWith(
+			'pe_place', { important: true }, 'NovelA', expect.objectContaining({ id: 'pe_place' })
+		));
+		expect(star.getAttribute('aria-pressed')).toBe('true');
 
-		const addSubEventBtn = container.querySelector('.wn-timeline-add-sub-event-btn') as unknown as MockElement;
-		expect(addSubEventBtn).not.toBeNull();
-
-		// Click add sub-event
-		addSubEventBtn.onclick?.();
-
-		const editingDesc = container.querySelector('.wn-timeline-item-desc.is-editing') as unknown as MockElement;
-		expect(editingDesc).not.toBeNull();
-		expect(editingDesc.getAttribute('contenteditable')).toBe('plaintext-only');
-		expect(editingDesc.getAttribute('role')).toBe('textbox');
-		expect(editingDesc.getAttribute('aria-multiline')).toBe('true');
-		expect(editingDesc.querySelector('textarea')).toBeNull();
-		expect(editingDesc.querySelector('.wn-corkboard-textarea')).toBeNull();
-		expect(editingDesc.hasClass('wn-sticky-note-paragraph-editor')).toBe(true);
-		const initialLines = editingDesc.querySelectorAll('.wn-sticky-note-editor-line');
-		expect(initialLines).toHaveLength(1);
-		expect(initialLines[0].hasClass('is-empty')).toBe(true);
-
-		// Test Chinese IME composition safety: Enter during IME should not trigger blur or save
-		editingDesc.dispatchEvent('compositionstart');
-		const imePreventDefaultSpy = vi.fn();
-		editingDesc.onkeydown?.({
-			key: 'Enter',
-			shiftKey: false,
-			isComposing: true,
-			preventDefault: imePreventDefaultSpy
-		} as unknown as KeyboardEvent);
-		expect(imePreventDefaultSpy).not.toHaveBeenCalled();
-		expect(updateEntrySpy).not.toHaveBeenCalled();
-
-		editingDesc.dispatchEvent('compositionend');
-
-		// Shift+Enter should permit newline without blurring/saving
-		const shiftEnterPreventDefaultSpy = vi.fn();
-		editingDesc.onkeydown?.({
-			key: 'Enter',
-			shiftKey: true,
-			isComposing: false,
-			preventDefault: shiftEnterPreventDefaultSpy
-		} as unknown as KeyboardEvent);
-		expect(shiftEnterPreventDefaultSpy).not.toHaveBeenCalled();
-		expect(updateEntrySpy).not.toHaveBeenCalled();
-
-		// Enter without Shift triggers blur/save
-		editingDesc.textContent = '新添加的子事件描述';
-		const enterPreventDefaultSpy = vi.fn();
-		editingDesc.onkeydown?.({
-			key: 'Enter',
-			shiftKey: false,
-			isComposing: false,
-			preventDefault: enterPreventDefaultSpy
-		} as unknown as KeyboardEvent);
-		expect(enterPreventDefaultSpy).toHaveBeenCalled();
-
-		await editingDesc.onblur?.();
-		expect(updateEntrySpy).toHaveBeenCalledWith(
+		container.querySelector('.wn-timeline-item-row')!.dispatchEvent('drop', {
+			preventDefault: vi.fn(),
+			stopPropagation: vi.fn(),
+			dataTransfer: {
+				types: ['application/wn-timeline-pending-id'],
+				getData: (type: string) => type === 'application/wn-timeline-pending-id' ? 'pe_place' : ''
+			}
+		});
+		await vi.waitFor(() => expect(placeIntoSpy).toHaveBeenCalledTimes(1));
+		expect(placeIntoSpy).toHaveBeenCalledWith(
+			'pe_place',
 			0,
-			expect.objectContaining({
-				type: '主线',
-				items: [
-					{ description: '初始事件描述', chapter: '' },
-					{ description: '新添加的子事件描述', chapter: '' }
-				]
-			}),
+			0,
 			'NovelA',
-			expect.anything()
+			expect.objectContaining({ id: 'pe_place', important: true }),
+			expect.objectContaining({ time: '第一年' })
 		);
-		expect(reloadBoardSpy).toHaveBeenCalled();
+
 	});
 
 	it('should preserve fixed-size overflow-y container without temporary minHeight or nested scroll owner', async () => {
@@ -1690,10 +1702,13 @@ describe('TimelineBoardRenderer', () => {
 	});
 
 	describe('Timeline editor lifecycle and pending save interaction ordering regressions', () => {
-		it('tears down sub-event editor before onSaveStateChange(false) and reloadBoard on successful save', async () => {
+		it('tears down pending card inline editor before onSaveStateChange(false) and reloadBoard, and preserves draft on failure', async () => {
+			let fail = true;
 			const callOrder: string[] = [];
-			const updateEntrySpy = vi.fn().mockImplementation(async () => {
-				callOrder.push('updateEntry');
+			const updatePendingSpy = vi.fn().mockImplementation(async () => {
+				callOrder.push('updatePendingEvent');
+				if (fail) throw new Error('Disk write failed');
+				return 'updated';
 			});
 			const onSaveStateChangeSpy = vi.fn().mockImplementation((isSaving: boolean) => {
 				callOrder.push(`saveState:${isSaving}`);
@@ -1702,148 +1717,120 @@ describe('TimelineBoardRenderer', () => {
 				callOrder.push('reloadBoard');
 			});
 
-			const options: TimelineBoardOptions = {
+			await TimelineBoardRenderer.render({
 				app: mockApp,
 				plugin: {
 					...mockPlugin,
 					timelineManager: {
 						...mockPlugin.timelineManager,
-						loadEntries: vi.fn().mockResolvedValue([
-							{ time: '第一年', description: '初始事件', items: [{ description: '初始事件', chapter: '' }] }
-						]),
-						updateEntry: updateEntrySpy
+						updatePendingEvent: updatePendingSpy
 					}
-				},
+				} as unknown as TimelineBoardPlugin,
 				container: container as unknown as HTMLElement,
 				files: [],
 				foreshadowingMap: new Map(),
 				currentBookPath: 'NovelA',
-				currentTimelineFilter: [],
+				loadedEntries: [],
+				loadedPendingEvents: [{ id: 'pe_edit', description: '原始待排', chapter: '' }],
 				onSaveStateChange: onSaveStateChangeSpy,
 				reloadBoard: reloadBoardSpy,
 				getChapterEvents: vi.fn().mockReturnValue([])
-			};
+			});
 
-			await TimelineBoardRenderer.render(options);
+			const pendingDesc = container.querySelector('.wn-timeline-pending-card')?.querySelector('.wn-timeline-item-desc') as unknown as MockElement;
+			const range = pendingDesc.ownerDocument.createRange();
+			const createRange = vi.spyOn(pendingDesc.ownerDocument, 'createRange').mockReturnValueOnce(range);
+			pendingDesc.onclick?.({ stopPropagation: vi.fn() });
+			expect(pendingDesc.hasClass('wn-sticky-note-paragraph-editor')).toBe(true);
+			expect(range.selectNodeContents).toHaveBeenCalledWith(pendingDesc);
+			expect(range.collapse).toHaveBeenCalledWith(false);
+			createRange.mockRestore();
 
-			const addSubEventBtn = container.querySelector('.wn-timeline-add-sub-event-btn') as unknown as MockElement;
-			addSubEventBtn.onclick?.();
+			pendingDesc.textContent = '修改后的待排';
+			await pendingDesc.onblur?.();
 
-			const editingDesc = container.querySelector('.wn-timeline-item-desc.is-editing') as unknown as MockElement;
-			expect(editingDesc).not.toBeNull();
-			expect(editingDesc.hasClass('wn-sticky-note-paragraph-editor')).toBe(true);
+			// On error: remains editable and reloadBoard not called
+			expect(updatePendingSpy).toHaveBeenCalledTimes(1);
+			expect(pendingDesc.hasClass('is-editing')).toBe(true);
+			expect(reloadBoardSpy).not.toHaveBeenCalled();
 
-			editingDesc.textContent = '新子事件内容';
-			await editingDesc.onblur?.();
-
-			// Teardown must be complete
-			expect(editingDesc.hasClass('wn-sticky-note-paragraph-editor')).toBe(false);
-			expect(editingDesc.hasClass('is-editing')).toBe(false);
-			expect(editingDesc.getAttribute('contenteditable')).toBeNull();
-
-			// Check order: updateEntry, saveState:false, reloadBoard
-			expect(updateEntrySpy).toHaveBeenCalledTimes(1);
+			// Retry succeeds
+			callOrder.length = 0;
+			fail = false;
+			await pendingDesc.onblur?.();
+			expect(pendingDesc.hasClass('wn-sticky-note-paragraph-editor')).toBe(false);
+			expect(pendingDesc.hasClass('is-editing')).toBe(false);
 			expect(callOrder).toEqual([
 				'saveState:true',
-				'updateEntry',
+				'updatePendingEvent',
 				'saveState:false',
 				'reloadBoard'
 			]);
 		});
 
-		it('tears down sub-event and cleans up temporary row on empty-cancel without writing', async () => {
-			const updateEntrySpy = vi.fn();
+		it('echoes time-pending checkbox in TimelineEditModal and allows filling real time to save', async () => {
+			const tlFile = createMockFile('Timeline.md', 'NovelA/Timeline.md');
+			const updateEntrySpy = vi.fn().mockResolvedValue('updated');
 			const reloadBoardSpy = vi.fn();
+			const entry: TimelineEntry = {
+				time: '',
+				timePending: true,
+				nodeId: 'nd_echo',
+				type: '主线',
+				description: '待定节点事件',
+				chapter: '',
+				rawBlock: '',
+				items: [{ description: '待定节点事件', chapter: '' }]
+			};
 
-			const options: TimelineBoardOptions = {
+			await TimelineBoardRenderer.render({
 				app: mockApp,
 				plugin: {
 					...mockPlugin,
 					timelineManager: {
 						...mockPlugin.timelineManager,
-						loadEntries: vi.fn().mockResolvedValue([
-							{ time: '第一年', description: '初始事件', items: [{ description: '初始事件', chapter: '' }] }
-						]),
+						getTimelineFile: vi.fn().mockReturnValue(tlFile),
 						updateEntry: updateEntrySpy
 					}
-				},
+				} as unknown as TimelineBoardPlugin,
 				container: container as unknown as HTMLElement,
 				files: [],
 				foreshadowingMap: new Map(),
 				currentBookPath: 'NovelA',
-				currentTimelineFilter: [],
+				loadedEntries: [entry],
+				loadedPendingEvents: [],
 				onSaveStateChange: vi.fn(),
 				reloadBoard: reloadBoardSpy,
 				getChapterEvents: vi.fn().mockReturnValue([])
-			};
-
-			await TimelineBoardRenderer.render(options);
-
-			const addSubEventBtn = container.querySelector('.wn-timeline-add-sub-event-btn') as unknown as MockElement;
-			addSubEventBtn.onclick?.();
-
-			const editingDesc = container.querySelector('.wn-timeline-item-desc.is-editing') as unknown as MockElement;
-			expect(editingDesc).not.toBeNull();
-			editingDesc.textContent = '   '; // empty/whitespace
-			await editingDesc.onblur?.();
-
-			expect(updateEntrySpy).not.toHaveBeenCalled();
-			expect(editingDesc.hasClass('wn-sticky-note-paragraph-editor')).toBe(false);
-			expect(editingDesc.hasClass('is-editing')).toBe(false);
-			expect(reloadBoardSpy).toHaveBeenCalledTimes(1);
-		});
-
-		it('preserves unsaved editable draft and does not reload on sub-event save error, allowing retry', async () => {
-			let fail = true;
-			const updateEntrySpy = vi.fn().mockImplementation(async () => {
-				if (fail) throw new Error('Disk write failed');
 			});
-			const reloadBoardSpy = vi.fn();
 
-			const options: TimelineBoardOptions = {
-				app: mockApp,
-				plugin: {
-					...mockPlugin,
-					timelineManager: {
-						...mockPlugin.timelineManager,
-						loadEntries: vi.fn().mockResolvedValue([
-							{ time: '第一年', description: '初始事件', items: [{ description: '初始事件', chapter: '' }] }
-						]),
-						updateEntry: updateEntrySpy
-					}
-				},
-				container: container as unknown as HTMLElement,
-				files: [],
-				foreshadowingMap: new Map(),
-				currentBookPath: 'NovelA',
-				currentTimelineFilter: [],
-				onSaveStateChange: vi.fn(),
-				reloadBoard: reloadBoardSpy,
-				getChapterEvents: vi.fn().mockReturnValue([])
-			};
+			lastOpenedModal = null;
+			const editBtn = container.querySelector('.wn-timeline-node-edit-btn') as unknown as MockElement;
+			editBtn.click();
+			expect(lastOpenedModal).not.toBeNull();
 
-			await TimelineBoardRenderer.render(options);
+			const modalEl = lastOpenedModal!.contentEl;
+			const timeInput = modalEl.querySelector('.wn-timeline-form-input') as unknown as MockElement & { disabled?: boolean };
+			const checkbox = modalEl.querySelector('.wn-timeline-time-pending-checkbox') as unknown as MockElement & { checked?: boolean };
+			expect(checkbox.checked).toBe(true);
+			expect(timeInput.disabled).toBe(true);
 
-			const addSubEventBtn = container.querySelector('.wn-timeline-add-sub-event-btn') as unknown as MockElement;
-			addSubEventBtn.onclick?.();
+			// Uncheck time-pending and fill real time
+			checkbox.checked = false;
+			checkbox.dispatchEvent('change');
+			expect(timeInput.disabled).toBe(false);
+			timeInput.value = '永和八年';
 
-			const editingDesc = container.querySelector('.wn-timeline-item-desc.is-editing') as unknown as MockElement;
-			editingDesc.textContent = '草稿子事件';
-			await editingDesc.onblur?.();
-
-			// On failure, draft remains editable, not torn down, reloadBoard not called
-			expect(updateEntrySpy).toHaveBeenCalledTimes(1);
-			expect(editingDesc.hasClass('wn-sticky-note-paragraph-editor')).toBe(true);
-			expect(editingDesc.hasClass('is-editing')).toBe(true);
-			expect(editingDesc.textContent).toBe('草稿子事件');
-			expect(reloadBoardSpy).not.toHaveBeenCalled();
-
-			// Retry: subsequent blur succeeds
-			fail = false;
-			await editingDesc.onblur?.();
-			expect(updateEntrySpy).toHaveBeenCalledTimes(2);
-			expect(editingDesc.hasClass('wn-sticky-note-paragraph-editor')).toBe(false);
-			expect(editingDesc.hasClass('is-editing')).toBe(false);
+			const saveBtn = modalEl.querySelector('.mod-cta') as unknown as MockElement;
+			saveBtn.click();
+			await vi.waitFor(() => expect(updateEntrySpy).toHaveBeenCalledTimes(1));
+			expect(updateEntrySpy).toHaveBeenCalledWith(
+				0,
+				expect.objectContaining({ time: '永和八年', timePending: undefined }),
+				'NovelA',
+				expect.objectContaining({ nodeId: 'nd_echo', timePending: true }),
+				expect.anything()
+			);
 			expect(reloadBoardSpy).toHaveBeenCalledTimes(1);
 		});
 
@@ -2757,6 +2744,520 @@ describe('TimelineBoardRenderer', () => {
 
 			// User draft is preserved
 			expect(timeInput.value).toBe('永和七年夏');
+		});
+	});
+
+	describe('Pending events workflow, split sidebar, inline node creation, and time-pending nodes', () => {
+		it('removes per-node add-sub-event buttons and renders split pending/unscheduled panes with empty-chapter state', async () => {
+			const entry: TimelineEntry = {
+				time: '第一年',
+				type: '主线',
+				description: '主线事件',
+				chapter: '',
+				rawBlock: '',
+				items: [{ description: '主线事件', chapter: '' }]
+			};
+
+			await TimelineBoardRenderer.render({
+				app: mockApp,
+				plugin: mockPlugin,
+				container: container as unknown as HTMLElement,
+				files: [],
+				foreshadowingMap: new Map(),
+				currentBookPath: 'FictionalBook',
+				loadedEntries: [entry],
+				loadedPendingEvents: [{ id: 'pe_1', description: '待排事件一', chapter: '' }],
+				onSaveStateChange: vi.fn(),
+				reloadBoard: vi.fn(),
+				getChapterEvents: vi.fn().mockReturnValue([])
+			} as TimelineBoardOptions);
+
+			expect(container.querySelector('.wn-timeline-add-sub-event-btn')).toBeNull();
+			expect(container.querySelector('.wn-timeline-pending-pane')).not.toBeNull();
+			expect(container.querySelector('.wn-timeline-unscheduled-pane')).not.toBeNull();
+			expect(container.querySelector('.wn-timeline-waterfall-sidebar')?.hasClass('is-unscheduled-empty')).toBe(true);
+			expect(container.querySelectorAll('.wn-timeline-pending-card')).toHaveLength(1);
+		});
+
+		it('adds pending events with Enter or the Add button and keeps the draft on failure', async () => {
+			let shouldFail = true;
+			const addPendingEventSpy = vi.fn().mockImplementation(async () => {
+				if (shouldFail) throw new Error('disk error');
+				return { content: '', event: { id: 'pe_new', description: '灵感事件', chapter: '' } };
+			});
+			const reloadBoardSpy = vi.fn();
+
+			const pluginWithPending = {
+				...mockPlugin,
+				timelineManager: {
+					...mockPlugin.timelineManager,
+					addPendingEvent: addPendingEventSpy
+				}
+			} as unknown as TimelineBoardPlugin;
+
+			await TimelineBoardRenderer.render({
+				app: mockApp,
+				plugin: pluginWithPending,
+				container: container as unknown as HTMLElement,
+				files: [],
+				foreshadowingMap: new Map(),
+				currentBookPath: 'FictionalBook',
+				loadedEntries: [],
+				loadedPendingEvents: [],
+				onSaveStateChange: vi.fn(),
+				reloadBoard: reloadBoardSpy,
+				getChapterEvents: vi.fn().mockReturnValue([])
+			} as TimelineBoardOptions);
+
+			const quickInput = container.querySelector('.wn-timeline-pending-quick-input') as unknown as MockElement;
+			const quickAddButton = container.querySelector('.wn-timeline-pending-quick-button')!;
+			expect(quickInput).not.toBeNull();
+			expect(quickAddButton.textContent).toBe('common.add');
+			quickInput.value = '灵感事件';
+
+			// IME Enter must not submit
+			quickInput.dispatchEvent('compositionstart');
+			quickInput.dispatchEvent('keydown', { key: 'Enter', isComposing: true, preventDefault: vi.fn() });
+			expect(addPendingEventSpy).not.toHaveBeenCalled();
+			quickInput.dispatchEvent('compositionend');
+
+			// Failure preserves input and does not reload
+			quickInput.dispatchEvent('keydown', { key: 'Enter', isComposing: false, preventDefault: vi.fn() });
+			await vi.waitFor(() => expect(addPendingEventSpy).toHaveBeenCalledTimes(1));
+			expect(quickInput.value).toBe('灵感事件');
+			expect(reloadBoardSpy).not.toHaveBeenCalled();
+
+			// Retry succeeds
+			shouldFail = false;
+			quickAddButton.click();
+			await vi.waitFor(() => expect(reloadBoardSpy).toHaveBeenCalledTimes(1));
+			expect(quickInput.value).toBe('');
+			expect(addPendingEventSpy).toHaveBeenLastCalledWith({ description: '灵感事件' }, 'FictionalBook');
+
+			quickInput.dispatchEvent('keydown', { key: 'Enter', isComposing: false, preventDefault: vi.fn() });
+			expect(addPendingEventSpy).toHaveBeenCalledTimes(2);
+			quickAddButton.click();
+			await vi.waitFor(() => expect(reloadBoardSpy).toHaveBeenCalledTimes(2));
+			expect(addPendingEventSpy).toHaveBeenLastCalledWith({ description: '' }, 'FictionalBook');
+		});
+
+		it('expands inline new-node form on inter-node pending drop with filtered anchors and time-pending checkbox, and supports Esc cancel', async () => {
+			const createNodeSpy = vi.fn().mockResolvedValue('updated');
+			const reloadBoardSpy = vi.fn();
+			const entries: TimelineEntry[] = [
+				{ time: '第1天', type: '主线', description: '甲', chapter: '', rawBlock: '', items: [{ description: '甲', chapter: '' }] },
+				{ time: '第2天', type: '支线', description: '隐', chapter: '', rawBlock: '', items: [{ description: '隐', chapter: '' }] },
+				{ time: '第3天', type: '主线', description: '乙', chapter: '', rawBlock: '', items: [{ description: '乙', chapter: '' }] }
+			];
+			const pendingCard = { id: 'pe_drop', description: '跨筛选拖放事件', chapter: '' };
+
+			await TimelineBoardRenderer.render({
+				app: mockApp,
+				plugin: {
+					...mockPlugin,
+					timelineManager: {
+						...mockPlugin.timelineManager,
+						createNodeFromPendingEvent: createNodeSpy
+					}
+				} as unknown as TimelineBoardPlugin,
+				container: container as unknown as HTMLElement,
+				files: [],
+				foreshadowingMap: new Map(),
+				currentBookPath: 'FictionalBook',
+				loadedEntries: entries,
+				loadedPendingEvents: [pendingCard],
+				currentTimelineFilter: ['主线'],
+				onSaveStateChange: vi.fn(),
+				reloadBoard: reloadBoardSpy,
+				getChapterEvents: vi.fn().mockReturnValue([])
+			} as TimelineBoardOptions);
+
+			const gap = container.querySelector('.wn-timeline-gap') as unknown as MockElement;
+			expect(gap).not.toBeNull();
+
+			gap.dispatchEvent('drop', {
+				preventDefault: vi.fn(),
+				stopPropagation: vi.fn(),
+				dataTransfer: {
+					types: ['application/wn-timeline-pending-id'],
+					getData: (type: string) => type === 'application/wn-timeline-pending-id' ? 'pe_drop' : ''
+				}
+			});
+
+			const inlineForm = container.querySelector('.wn-timeline-inline-node-form') as unknown as MockElement;
+			expect(inlineForm).not.toBeNull();
+			const timeInput = inlineForm.querySelector('.wn-timeline-inline-time-input') as unknown as MockElement;
+			const pendingCheckbox = inlineForm.querySelector('.wn-timeline-time-pending-checkbox') as unknown as MockElement & { checked?: boolean };
+			expect(timeInput.focus).toHaveBeenCalled();
+			expect(pendingCheckbox.checked).toBe(false);
+
+			// Cancel via Escape keeps pending card untouched and does not write
+			inlineForm.dispatchEvent('keydown', { key: 'Escape', preventDefault: vi.fn(), stopPropagation: vi.fn() });
+			expect(container.querySelector('.wn-timeline-inline-node-form')).toBeNull();
+			expect(createNodeSpy).not.toHaveBeenCalled();
+
+			// Drop again and submit with timePending checked -> passes actual anchors (0 and 2, NOT filtered indices 0 and 1!)
+			gap.dispatchEvent('drop', {
+				preventDefault: vi.fn(),
+				stopPropagation: vi.fn(),
+				dataTransfer: {
+					types: ['application/wn-timeline-pending-id'],
+					getData: (type: string) => type === 'application/wn-timeline-pending-id' ? 'pe_drop' : ''
+				}
+			});
+			const form2 = container.querySelector('.wn-timeline-inline-node-form') as unknown as MockElement;
+			const checkbox2 = form2.querySelector('.wn-timeline-time-pending-checkbox') as unknown as MockElement & { checked?: boolean };
+			checkbox2.checked = true;
+			checkbox2.dispatchEvent('change');
+			const confirmBtn = form2.querySelector('.wn-timeline-inline-confirm-btn') as unknown as MockElement;
+			confirmBtn.click();
+
+			await vi.waitFor(() => expect(createNodeSpy).toHaveBeenCalledTimes(1));
+			expect(createNodeSpy).toHaveBeenCalledWith(
+				'pe_drop',
+				expect.objectContaining({ time: '', timePending: true }),
+				expect.objectContaining({ afterEntryIndex: 0, beforeEntryIndex: 2 }),
+				'FictionalBook',
+				expect.objectContaining({ id: 'pe_drop' })
+			);
+			expect(reloadBoardSpy).toHaveBeenCalledTimes(1);
+		});
+
+		it('returns a scheduled event by dragging into an empty pending area', async () => {
+			const moveToPendingSpy = vi.fn().mockResolvedValue('updated');
+			const reloadBoardSpy = vi.fn();
+			const entry: TimelineEntry = {
+				time: '',
+				timePending: true,
+				nodeId: 'nd_a',
+				type: '主线',
+				description: '已排事件',
+				chapter: 'Chapter 1',
+				rawBlock: '',
+				items: [{ description: '已排事件', chapter: 'Chapter 1' }]
+			} as TimelineEntry;
+
+			await TimelineBoardRenderer.render({
+				app: mockApp,
+				plugin: {
+					...mockPlugin,
+					timelineManager: {
+						...mockPlugin.timelineManager,
+						moveEventToPending: moveToPendingSpy
+					}
+				} as unknown as TimelineBoardPlugin,
+				container: container as unknown as HTMLElement,
+				files: [],
+				foreshadowingMap: new Map(),
+				currentBookPath: 'FictionalBook',
+				loadedEntries: [entry],
+				loadedPendingEvents: [],
+				onSaveStateChange: vi.fn(),
+				reloadBoard: reloadBoardSpy,
+				getChapterEvents: vi.fn().mockReturnValue([])
+			} as TimelineBoardOptions);
+
+			expect(container.querySelector('.wn-timeline-node-time-text')?.textContent).toBe('timeline.time-pending');
+			expect(container.querySelector('.wn-timeline-item-return-btn')).toBeNull();
+			expect(container.querySelector('.wn-timeline-waterfall-sidebar')?.hasClass('is-pending-empty')).toBe(true);
+			expect(container.querySelector('.wn-timeline-pending-quick-input')).not.toBeNull();
+			expect(container.querySelector('.wn-timeline-pending-list')).toBeNull();
+			container.querySelector('.wn-timeline-waterfall-sidebar')!.dispatchEvent('drop', {
+				preventDefault: vi.fn(),
+				stopPropagation: vi.fn(),
+				dataTransfer: {
+					types: ['application/wn-timeline-entry-index', 'application/wn-timeline-event-index'],
+					getData: () => '0'
+				}
+			});
+
+			await vi.waitFor(() => expect(moveToPendingSpy).toHaveBeenCalledTimes(1));
+			expect(moveToPendingSpy).toHaveBeenCalledWith(0, 0, 'FictionalBook', expect.objectContaining({ description: '已排事件', chapter: 'Chapter 1' }), expect.objectContaining({ nodeId: 'nd_a' }));
+			expect(reloadBoardSpy).toHaveBeenCalledTimes(1);
+		});
+	});
+
+	describe('Timeline node handle reorder', () => {
+		it('renders a draggable handle, folds synchronously on dragstart, isolates node MIME from item dropzones, and restores on dragend/Escape/mouse-hold release', async () => {
+			const moveEntrySpy = vi.fn().mockResolvedValue('updated');
+			const moveEventItemSpy = vi.fn();
+			const entries: TimelineEntry[] = [
+				{ time: '第1天', type: '主线', description: '事件甲', chapter: '', rawBlock: '', items: [{ description: '事件甲', chapter: '' }] },
+				{ time: '第2天', type: '主线', description: '事件乙', chapter: '', rawBlock: '', items: [{ description: '事件乙', chapter: '' }] }
+			];
+
+			await TimelineBoardRenderer.render({
+				app: mockApp,
+				plugin: {
+					...mockPlugin,
+					timelineManager: {
+						...mockPlugin.timelineManager,
+						moveEntry: moveEntrySpy,
+						moveEventItem: moveEventItemSpy
+					}
+				} as unknown as TimelineBoardPlugin,
+				container: container as unknown as HTMLElement,
+				files: [],
+				foreshadowingMap: new Map(),
+				currentBookPath: 'FictionalBook',
+				loadedEntries: entries,
+				loadedPendingEvents: [],
+				onSaveStateChange: vi.fn(),
+				reloadBoard: vi.fn(),
+				getChapterEvents: vi.fn().mockReturnValue([])
+			} as TimelineBoardOptions);
+
+			const layout = container.querySelector('.wn-timeline-waterfall-layout')!;
+			const nodes = container.querySelectorAll('.wn-timeline-node');
+			const handles = container.querySelectorAll('.wn-timeline-node-handle');
+			expect(handles.length).toBe(2);
+			expect(handles[0].getAttribute('draggable')).toBe('true');
+			expect(handles[0].getAttribute('aria-label')).toBe('timeline.drag-to-reorder-node');
+			const waterfall = container.querySelector('.wn-timeline-waterfall-main')!;
+			waterfall.clientHeight = 500;
+			waterfall.scrollTop = 180;
+			vi.spyOn(handles[0], 'getBoundingClientRect').mockImplementation(() => {
+				const buffer = parseFloat(waterfall.style['--wn-timeline-node-sort-buffer']) || 0;
+				const contentTop = layout.hasClass('is-node-sorting') ? 90 + buffer : 460;
+				const top = contentTop - waterfall.scrollTop;
+				return { ...handles[0].mockRect, top, bottom: top + handles[0].mockRect.height };
+			});
+			const handleTop = handles[0].getBoundingClientRect().top;
+
+			// 1. dragstart folds synchronously
+			const dragData: Record<string, string> = {};
+			handles[0].dispatchEvent('dragstart', {
+				stopPropagation: vi.fn(),
+				dataTransfer: {
+					effectAllowed: '',
+					types: [],
+					setData: (fmt: string, val: string) => { dragData[fmt] = val; }
+				}
+			});
+			expect(dragData['application/wn-timeline-node-index']).toBe('0');
+			expect(layout.hasClass('is-node-sorting')).toBe(true);
+			expect(nodes[0].hasClass('is-node-dragging')).toBe(true);
+			expect(handles[0].getBoundingClientRect().top).toBe(handleTop);
+
+			// Existing itemRow dropzone must ignore node MIME
+			const itemRows = container.querySelectorAll('.wn-timeline-item-row');
+			const itemPreventDefault = vi.fn();
+			itemRows[1].dispatchEvent('dragover', {
+				preventDefault: itemPreventDefault,
+				stopPropagation: vi.fn(),
+				dataTransfer: {
+					types: ['application/wn-timeline-node-index'],
+					getData: (fmt: string) => fmt === 'application/wn-timeline-node-index' ? '0' : ''
+				}
+			});
+			expect(itemPreventDefault).not.toHaveBeenCalled();
+			expect(moveEventItemSpy).not.toHaveBeenCalled();
+
+			// 2. dragend restores expanded contents
+			handles[0].dispatchEvent('dragend');
+			expect(layout.hasClass('is-node-sorting')).toBe(false);
+			expect(nodes[0].hasClass('is-node-dragging')).toBe(false);
+			expect(waterfall.scrollTop).toBe(180);
+			expect(waterfall.style['--wn-timeline-node-sort-buffer']).toBe('');
+
+			// 3. Escape during drag restores expanded contents
+			handles[0].dispatchEvent('dragstart', {
+				stopPropagation: vi.fn(),
+				dataTransfer: { effectAllowed: '', setData: vi.fn() }
+			});
+			expect(layout.hasClass('is-node-sorting')).toBe(true);
+			container.ownerDocument.dispatchEvent('keydown', { key: 'Escape' });
+			expect(layout.hasClass('is-node-sorting')).toBe(false);
+			nodes[1].dispatchEvent('drop', {
+				clientY: 90,
+				preventDefault: vi.fn(),
+				stopPropagation: vi.fn(),
+				dataTransfer: {
+					types: ['application/wn-timeline-node-index'],
+					getData: () => '0'
+				}
+			});
+			expect(moveEntrySpy).not.toHaveBeenCalled();
+
+			// 4. Unmoved mouse hold (~220ms) folds, then mouseup restores without moving
+			vi.useFakeTimers();
+			try {
+				handles[0].dispatchEvent('mousedown', {
+					button: 0,
+					clientX: 10,
+					clientY: 10,
+					stopPropagation: vi.fn()
+				});
+				expect(layout.hasClass('is-node-sorting')).toBe(false);
+				vi.advanceTimersByTime(220);
+				expect(layout.hasClass('is-node-sorting')).toBe(true);
+				expect(handles[0].getBoundingClientRect().top).toBe(handleTop);
+				container.ownerDocument.dispatchEvent('mouseup', {});
+				expect(layout.hasClass('is-node-sorting')).toBe(false);
+			} finally {
+				vi.useRealTimers();
+			}
+			expect(moveEntrySpy).not.toHaveBeenCalled();
+		});
+
+		it('drops filtered and reversed nodes at the correct storage index, restores immediately on drop, and skips reload on failure', async () => {
+			let shouldFail = false;
+			const moveEntrySpy = vi.fn().mockImplementation(async () => {
+				if (shouldFail) throw new Error('conflict');
+				return 'updated';
+			});
+			const reloadBoardSpy = vi.fn();
+			const onSaveStateChangeSpy = vi.fn();
+			const entries: TimelineEntry[] = [
+				{ time: '第1天', type: '主线', description: '甲', chapter: '', rawBlock: '', items: [{ description: '甲', chapter: '' }] },
+				{ time: '第2天', type: '支线', description: '隐', chapter: '', rawBlock: '', items: [{ description: '隐', chapter: '' }] },
+				{ time: '第3天', type: '主线', description: '乙', chapter: '', rawBlock: '', items: [{ description: '乙', chapter: '' }] }
+			];
+
+			// Ascending + filtered: displayEntries = [entries[0], entries[2]]
+			await TimelineBoardRenderer.render({
+				app: mockApp,
+				plugin: {
+					...mockPlugin,
+					timelineManager: {
+						...mockPlugin.timelineManager,
+						moveEntry: moveEntrySpy
+					}
+				} as unknown as TimelineBoardPlugin,
+				container: container as unknown as HTMLElement,
+				files: [],
+				foreshadowingMap: new Map(),
+				currentBookPath: 'FictionalBook',
+				loadedEntries: entries,
+				loadedPendingEvents: [],
+				currentTimelineFilter: ['主线'],
+				onSaveStateChange: onSaveStateChangeSpy,
+				reloadBoard: reloadBoardSpy,
+				getChapterEvents: vi.fn().mockReturnValue([])
+			} as TimelineBoardOptions);
+
+			const layout = container.querySelector('.wn-timeline-waterfall-layout')!;
+			const nodes = container.querySelectorAll('.wn-timeline-node');
+			const handles = container.querySelectorAll('.wn-timeline-node-handle');
+			expect(nodes.length).toBe(2);
+			nodes[1].mockRect = { top: 100, bottom: 200, height: 100, left: 0, right: 100, width: 100 };
+
+			handles[0].dispatchEvent('dragstart', {
+				stopPropagation: vi.fn(),
+				dataTransfer: { effectAllowed: '', setData: vi.fn() }
+			});
+			nodes[1].dispatchEvent('drop', {
+				clientY: 120,
+				preventDefault: vi.fn(),
+				stopPropagation: vi.fn(),
+				dataTransfer: {
+					types: ['application/wn-timeline-node-index'],
+					getData: () => '0'
+				}
+			});
+			expect(moveEntrySpy).not.toHaveBeenCalled();
+
+			handles[0].dispatchEvent('dragstart', {
+				stopPropagation: vi.fn(),
+				dataTransfer: { effectAllowed: '', setData: vi.fn() }
+			});
+			expect(layout.hasClass('is-node-sorting')).toBe(true);
+
+			// Drop onto lower half of displayed node[1] (entries[2]) -> insertAt = 3, fromIndex = 0 -> finalIndex = 2
+			nodes[1].dispatchEvent('dragover', {
+				clientY: 180,
+				preventDefault: vi.fn(),
+				stopPropagation: vi.fn(),
+				dataTransfer: { types: ['application/wn-timeline-node-index'], dropEffect: '' }
+			});
+			expect(nodes[1].hasClass('drag-over-node-bottom')).toBe(true);
+
+			nodes[1].dispatchEvent('drop', {
+				clientY: 180,
+				preventDefault: vi.fn(),
+				stopPropagation: vi.fn(),
+				dataTransfer: {
+					types: ['application/wn-timeline-node-index'],
+					getData: (fmt: string) => fmt === 'application/wn-timeline-node-index' ? '0' : ''
+				}
+			});
+			// Transient UI ends immediately after gesture
+			expect(layout.hasClass('is-node-sorting')).toBe(false);
+			expect(nodes[1].hasClass('drag-over-node-bottom')).toBe(false);
+
+			await vi.waitFor(() => expect(moveEntrySpy).toHaveBeenCalledTimes(1));
+			expect(moveEntrySpy).toHaveBeenCalledWith(
+				0,
+				2,
+				'FictionalBook',
+				expect.objectContaining({ time: '第1天' }),
+				expect.objectContaining({ time: '第3天' })
+			);
+			expect(reloadBoardSpy).toHaveBeenCalledTimes(1);
+
+			// Descending + filtered + failure: displayEntries = [entries[2], entries[0]]
+			container.empty();
+			shouldFail = true;
+			moveEntrySpy.mockClear();
+			reloadBoardSpy.mockClear();
+			onSaveStateChangeSpy.mockClear();
+
+			await TimelineBoardRenderer.render({
+				app: mockApp,
+				plugin: {
+					...mockPlugin,
+					timelineManager: {
+						...mockPlugin.timelineManager,
+						moveEntry: moveEntrySpy
+					}
+				} as unknown as TimelineBoardPlugin,
+				container: container as unknown as HTMLElement,
+				files: [],
+				foreshadowingMap: new Map(),
+				currentBookPath: 'FictionalBook',
+				loadedEntries: entries,
+				loadedPendingEvents: [],
+				currentTimelineFilter: ['主线'],
+				isDescending: true,
+				onSaveStateChange: onSaveStateChangeSpy,
+				reloadBoard: reloadBoardSpy,
+				getChapterEvents: vi.fn().mockReturnValue([])
+			} as TimelineBoardOptions);
+
+			const revLayout = container.querySelector('.wn-timeline-waterfall-layout')!;
+			const revNodes = container.querySelectorAll('.wn-timeline-node');
+			const revHandles = container.querySelectorAll('.wn-timeline-node-handle');
+			revNodes[1].mockRect = { top: 100, bottom: 200, height: 100, left: 0, right: 100, width: 100 };
+
+			revHandles[0].dispatchEvent('dragstart', {
+				stopPropagation: vi.fn(),
+				dataTransfer: { effectAllowed: '', setData: vi.fn() }
+			});
+			expect(revLayout.hasClass('is-node-sorting')).toBe(true);
+
+			// Drag entries[2] (displayed at 0) onto lower half of entries[0] (displayed at 1)
+			// In descending mode, lower half = before entries[0] in storage (insertAt = 0 < fromIndex 2 -> finalIndex = 0)
+			revNodes[1].dispatchEvent('drop', {
+				clientY: 180,
+				preventDefault: vi.fn(),
+				stopPropagation: vi.fn(),
+				dataTransfer: {
+					types: ['application/wn-timeline-node-index'],
+					getData: (fmt: string) => fmt === 'application/wn-timeline-node-index' ? '2' : ''
+				}
+			});
+			expect(revLayout.hasClass('is-node-sorting')).toBe(false);
+
+			await vi.waitFor(() => expect(moveEntrySpy).toHaveBeenCalledTimes(1));
+			expect(moveEntrySpy).toHaveBeenCalledWith(
+				2,
+				0,
+				'FictionalBook',
+				expect.objectContaining({ time: '第3天' }),
+				expect.objectContaining({ time: '第1天' })
+			);
+			expect(onSaveStateChangeSpy).toHaveBeenLastCalledWith(false);
+			expect(reloadBoardSpy).not.toHaveBeenCalled();
 		});
 	});
 });

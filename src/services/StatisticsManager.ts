@@ -57,15 +57,15 @@ export class StatisticsManager {
 		let currentFolder = '';
 		let chapterWords = 0;
 		const imm = this.plugin.immersiveModeManager;
-		const isMobileImmersive = Boolean(imm?.isMobileDataIsolationActive?.() ?? imm?.isMobileImmersiveSessionActive?.());
+		const isMobileImmersive = imm?.isMobileDataIsolationActive() ?? false;
 		const view = isMobileImmersive
-			? (imm?.getDataScopedMainView?.() ?? imm?.getActiveSessionMainView?.() ?? null)
+			? (imm?.getDataScopedMainView() ?? null)
 			: this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
 		let file: TFile | null = null;
 		if (targetFile !== undefined) {
 			file = targetFile;
 		} else if (isMobileImmersive) {
-			file = imm?.getDataScopedMainFile?.() ?? imm?.getActiveSessionMainFile?.() ?? view?.file ?? null;
+			file = imm?.getDataScopedMainFile() ?? view?.file ?? null;
 		} else {
 			file = view?.file ?? null;
 			if (!file && this.plugin.lastFilePath) {
